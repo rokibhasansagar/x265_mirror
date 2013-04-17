@@ -1,7 +1,8 @@
 /*****************************************************************************
  * Copyright (C) 2013 x265 project
  *
- * Authors: Steve Borho <steve@borho.org>
+ * Authors: Siva Viswanathan <siva@multicorewareinc.com>
+ *          Praveen Tiwari <praveen@multicorewareinc.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,32 +22,31 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
-#ifndef _MBDSTHARNESS_H_1
-#define _MBDSTHARNESS_H_1 1
+#ifndef _BUTTERFLYHARNESS_H_1
+#define _BUTTERFLYHARNESS_H_1 1
 
 #include "testharness.h"
 #include "primitives.h"
 
-class MBDstHarness : public TestHarness
+class ButterflyHarness : public TestHarness
 {
 protected:
 
-    short *mbuf1, *mbuf2, *mbuf3;
+    short *bbuf1, *bbuf2, *bbuf3;
 
-    int mb_t_size;
+    int bb_t_size;
 
-    bool check_mbdst_primitive(x265::mbdst ref, x265::mbdst opt);
     bool check_butterfly16_primitive(x265::butterfly ref, x265::butterfly opt);
 
 public:
 
-    MBDstHarness();
+    ButterflyHarness();
 
-    virtual ~MBDstHarness();
+    virtual ~ButterflyHarness();
 
     bool testCorrectness(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt);
 
     void measureSpeed(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt);
 };
 
-#endif // ifndef _MBDSTHARNESS_H_1
+#endif // ifndef _BUTTERFLYHARNESS_H_1
