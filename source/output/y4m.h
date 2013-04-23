@@ -21,50 +21,39 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
-#ifndef _INPUT_H_
-#define _INPUT_H_
+#ifndef _Y4M_H_
+#define _Y4M_H_
 
-#include "x265.h"
-#include <stdint.h>
-#include <iostream>
+#include "output.h"
+#include <stdio.h>
 
 namespace x265 {
 // private x265 namespace
 
-class Input
+class Y4MOutput : public Output
 {
 protected:
 
-    virtual ~Input()  {}
+    int width;
+
+    int height;
+
+    FILE* fp;
+
+    char *buf;
+
+    void writeHeader();
 
 public:
 
-    Input()           {}
+    Y4MOutput(const char *filename, int width, int height, int bitdepth);
 
-    static Input* Open(const char *filename);
+    virtual ~Y4MOutput();
 
-    virtual void setDimensions(int width, int height) = 0;
+    void release()                                { delete this; }
 
-    virtual void setBitDepth(int bitDepth) = 0;
-
-    virtual float getRate() const = 0;
-
-    virtual int getWidth() const = 0;
-
-    virtual int getHeight() const = 0;
-
-    virtual void release() = 0;
-
-    virtual void skipFrames(int numFrames) = 0;
-
-    virtual bool readPicture(x265_picture& pic) = 0;
-
-    virtual bool isEof() const = 0;
-
-    virtual bool isFail() const = 0;
-
-    virtual int  guessFrameCount() const = 0;
+    bool writePicture(const x265_picture& pic);
 };
 }
 
-#endif // _INPUT_H_
+#endif // _Y4M_H_

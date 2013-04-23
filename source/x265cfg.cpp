@@ -40,19 +40,15 @@
 #include <cstring>
 #include <string>
 #include <math.h>
+#include "TAppCommon/program_options_lite.h"
 #include "TLibCommon/TComRom.h"
+#include "TLibEncoder/TEncRateCtrl.h"
+#include "primitives.h"
 #include "x265cfg.h"
 
 static istream& operator >>(istream &, Level::Name &);
 static istream& operator >>(istream &, Level::Tier &);
 static istream& operator >>(istream &, Profile::Name &);
-
-#include "TAppCommon/program_options_lite.h"
-#include "TLibEncoder/TEncRateCtrl.h"
-
-#ifdef WIN32
-#define strdup _strdup
-#endif
 
 using namespace std;
 namespace po = df::program_options_lite;
@@ -65,15 +61,15 @@ namespace po = df::program_options_lite;
 // ====================================================================================================================
 
 TAppEncCfg::TAppEncCfg()
-    : m_pchInputFile()
-    , m_pchBitstreamFile()
-    , m_pchReconFile()
+    : m_pchBitstreamFile()
     , m_pchdQPFile()
     , m_pColumnWidth()
     , m_pRowHeight()
     , m_scalingListFile()
 {
     m_aidQP = NULL;
+    m_input = NULL;
+    m_recon = NULL;
 #if J0149_TONE_MAPPING_SEI
     m_startOfCodedInterval = NULL;
     m_codedPivotValue = NULL;
@@ -83,6 +79,14 @@ TAppEncCfg::TAppEncCfg()
 
 TAppEncCfg::~TAppEncCfg()
 {
+    if (m_input)
+    {
+        m_input->release();
+    }
+    if (m_recon)
+    {
+        m_recon->release();
+    }
     if (m_aidQP)
     {
         delete[] m_aidQP;
@@ -104,9 +108,7 @@ TAppEncCfg::~TAppEncCfg()
         m_targetPivotValue = NULL;
     }
 #endif // if J0149_TONE_MAPPING_SEI
-    free(m_pchInputFile);
     free(m_pchBitstreamFile);
-    free(m_pchReconFile);
     free(m_pchdQPFile);
     free(m_pColumnWidth);
     free(m_pRowHeight);
@@ -259,9 +261,11 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
 {
     Bool do_help = false;
 
+    int cpuid;
+
     string cfg_InputFile;
-    string cfg_BitstreamFile;
     string cfg_ReconFile;
+    string cfg_BitstreamFile;
     string cfg_dQPFile;
     string cfg_ColumnWidth;
     string cfg_RowHeight;
@@ -285,7 +289,9 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
         ("help", do_help, false, "this help text")
         ("c", po::parseConfigFile, "configuration file name")
 
-    // File, I/O and source parameters
+        ("cpuid",                 cpuid,               0, "SIMD architecture. 2:MMX2 .. 8:AVX2 (default:0-auto)")
+
+        // File, I/O and source parameters
         ("InputFile,i",           cfg_InputFile,     string(""), "Original YUV input file name")
         ("BitstreamFile,b",       cfg_BitstreamFile, string(""), "Bitstream output file name")
         ("ReconFile,o",           cfg_ReconFile,     string(""), "Reconstructed YUV output file name")
@@ -393,7 +399,7 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
         ("DeblockingFilterMetric",         m_DeblockingFilterMetric,         false)
 #endif
 
-    // Coding tools
+        // Coding tools
         ("AMP",                      m_enableAMP,                 true,  "Enable asymmetric motion partitions")
         ("TransformSkip",            m_useTransformSkip,          false, "Intra transform skipping")
         ("TransformSkipFast",        m_useTransformSkipFast,      false, "Fast intra transform skipping")
@@ -587,11 +593,20 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
     }
 
     po::setDefaults(opts);
-    const list<const Char*>& argv_unhandled = po::scanArgv(opts, argc, (const Char**)argv);
 
-    for (list<const Char*>::const_iterator it = argv_unhandled.begin(); it != argv_unhandled.end(); it++)
+    try
     {
-        fprintf(stderr, "Unhandled argument ignored: `%s'\n", *it);
+        const list<const Char*>& argv_unhandled = po::scanArgv(opts, argc, (const Char**)argv);
+
+        for (list<const Char*>::const_iterator it = argv_unhandled.begin(); it != argv_unhandled.end(); it++)
+        {
+            fprintf(stderr, "Unhandled argument ignored: `%s'\n", *it);
+        }
+    }
+    catch (po::ParseFailure &e)
+    {
+        cerr << "Error parsing option \"" << e.arg << "\" with argument \"" << e.val << "\"." << endl;
+        return false;
     }
 
     if (argc == 1 || do_help)
@@ -601,43 +616,52 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
         return false;
     }
 
+    x265::SetupPrimitives(cpuid);
+
     /*
      * Set any derived parameters
      */
     /* convert std::string to c string for compatability */
-    m_pchInputFile = cfg_InputFile.empty() ? NULL : strdup(cfg_InputFile.c_str());
     m_pchBitstreamFile = cfg_BitstreamFile.empty() ? NULL : strdup(cfg_BitstreamFile.c_str());
-    m_pchReconFile = cfg_ReconFile.empty() ? NULL : strdup(cfg_ReconFile.c_str());
     m_pchdQPFile = cfg_dQPFile.empty() ? NULL : strdup(cfg_dQPFile.c_str());
 
     /* parse the width, height, frame rate from the y4m files if it is not given in the configuration file */
-    char * s = strrchr(m_pchInputFile, '.');
-    handler_input = NULL;
-    handler_recon = NULL;
-
-    if ((!strcmp(s + 1, "y4m")))
+    m_input = x265::Input::Open(cfg_InputFile.c_str());
+    if (!m_input || m_input->isFail())
     {
-        m_cTVideoIOInputFile = new TVideoIOY4m();
-        m_cTVideoIOReconFile = new TVideoIOY4m();
-        /* get the video information like width,height,framerate */
-        m_cTVideoIOInputFile->open(m_pchInputFile,
-                                   false,
-                                   m_inputBitDepthY,
-                                   m_inputBitDepthC,
-                                   m_internalBitDepthY,
-                                   m_internalBitDepthC,
-                                   handler_input,
-                                   video_info,
-                                   m_aiPad);
-        m_cTVideoIOInputFile->getVideoInfo(video_info, handler_input);
-        m_iSourceWidth = video_info.width;
-        m_iSourceHeight = video_info.height;
-        m_iFrameRate = video_info.FrameRate;
+        printf("Unable to open source file\n");
+        return 1;
     }
-    else if ((!strcmp(s + 1, "yuv")))
+    printf("Input          File          : %s\n", cfg_InputFile.c_str());
+
+    if (m_input->getWidth())
     {
-        m_cTVideoIOInputFile = new TVideoIOYuv();
-        m_cTVideoIOReconFile = new TVideoIOYuv();
+        m_iSourceWidth = m_input->getWidth();
+        m_iSourceHeight = m_input->getHeight();
+        m_iFrameRate = (int)m_input->getRate();
+        m_inputBitDepthC = m_inputBitDepthY = 8;
+    }
+    else
+    {
+        m_input->setDimensions(m_iSourceWidth, m_iSourceHeight);
+        m_input->setBitDepth(m_inputBitDepthY);
+    }
+
+    /* rules for input, output and internal bitdepths as per help text */
+    if (!m_internalBitDepthY) { m_internalBitDepthY = m_inputBitDepthY; }
+    if (!m_internalBitDepthC) { m_internalBitDepthC = m_internalBitDepthY; }
+    if (!m_inputBitDepthC) { m_inputBitDepthC = m_inputBitDepthY; }
+    if (!m_outputBitDepthY) { m_outputBitDepthY = m_internalBitDepthY; }
+    if (!m_outputBitDepthC) { m_outputBitDepthC = m_internalBitDepthC; }
+
+    if (m_FrameSkip && m_input)
+    {
+        m_input->skipFrames(m_FrameSkip);
+    }
+    if (!cfg_ReconFile.empty())
+    {
+        printf("Reconstruction File          : %s\n", cfg_ReconFile.c_str());
+        m_recon = x265::Output::Open(cfg_ReconFile.c_str(), m_iSourceWidth, m_iSourceHeight, m_outputBitDepthY);
     }
 
     Char *pColumnWidth = cfg_ColumnWidth.empty() ? NULL : strdup(cfg_ColumnWidth.c_str());
@@ -708,13 +732,6 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
     readIntString(cfg_constantPicRateIdc,     m_bitRatePicRateMaxTLayers, m_constantPicRateIdc,     "constant pic rate Idc");
 #endif
     m_scalingListFile = cfg_ScalingListFile.empty() ? NULL : strdup(cfg_ScalingListFile.c_str());
-
-    /* rules for input, output and internal bitdepths as per help text */
-    if (!m_internalBitDepthY) { m_internalBitDepthY = m_inputBitDepthY; }
-    if (!m_internalBitDepthC) { m_internalBitDepthC = m_internalBitDepthY; }
-    if (!m_inputBitDepthC) { m_inputBitDepthC = m_inputBitDepthY; }
-    if (!m_outputBitDepthY) { m_outputBitDepthY = m_internalBitDepthY; }
-    if (!m_outputBitDepthC) { m_outputBitDepthC = m_internalBitDepthC; }
 
     // TODO:ChromaFmt assumes 4:2:0 below
     switch (m_conformanceMode)
@@ -876,10 +893,11 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
         }
     }
 #endif // if J0149_TONE_MAPPING_SEI
+
     // check validity of input parameters
     xCheckParameter();
 
-    // set global varibles
+    // set global variables
     xSetGlobal();
 
     // print-out parameters
@@ -957,23 +975,18 @@ Void readIntString(const string inpString, const Int numEntries, Int* &memberArr
 }
 
 #endif // if SIGNAL_BITRATE_PICRATE_IN_VPS
-// ====================================================================================================================
-// Private member functions
-// ====================================================================================================================
 
-Bool confirmPara(Bool bflag, const Char* message);
+static inline Bool confirmPara(Bool bflag, const Char* message)
+{
+    if (!bflag)
+        return false;
+
+    printf("Error: %s\n", message);
+    return true;
+}
 
 Void TAppEncCfg::xCheckParameter()
 {
-    if (!m_decodedPictureHashSEIEnabled)
-    {
-        fprintf(stderr, "******************************************************************\n");
-        fprintf(stderr, "** WARNING: --SEIDecodedPictureHash is now disabled by default. **\n");
-        fprintf(stderr, "**          Automatic verification of decoded pictures by a     **\n");
-        fprintf(stderr, "**          decoder requires this option to be enabled.         **\n");
-        fprintf(stderr, "******************************************************************\n");
-    }
-
     Bool check_failed = false; /* abort if there is a fatal configuration problem */
 #define xConfirmPara(a, b) check_failed |= confirmPara(a, b)
     // check range of parameters
@@ -1605,9 +1618,7 @@ Void TAppEncCfg::xSetGlobal()
 Void TAppEncCfg::xPrintParameter()
 {
     printf("\n");
-    printf("Input          File          : %s\n", m_pchInputFile);
     printf("Bitstream      File          : %s\n", m_pchBitstreamFile);
-    printf("Reconstruction File          : %s\n", m_pchReconFile);
     printf("Real     Format              : %dx%d %dHz\n", m_iSourceWidth - m_confLeft - m_confRight, m_iSourceHeight - m_confTop - m_confBottom, m_iFrameRate);
     printf("Internal Format              : %dx%d %dHz\n", m_iSourceWidth, m_iSourceHeight, m_iFrameRate);
     printf("Frame index                  : %u - %d (%d frames)\n", m_FrameSkip, m_FrameSkip + m_framesToBeEncoded - 1, m_framesToBeEncoded);
@@ -1705,15 +1716,6 @@ Void TAppEncCfg::xPrintParameter()
     printf("\n\n");
 
     fflush(stdout);
-}
-
-Bool confirmPara(Bool bflag, const Char* message)
-{
-    if (!bflag)
-        return false;
-
-    printf("Error: %s\n", message);
-    return true;
 }
 
 //! \}
