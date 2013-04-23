@@ -39,11 +39,8 @@
 #define __TAPPENCCFG__
 
 #include "TLibCommon/CommonDef.h"
-
-#include "TLibEncoder/TEncCfg.h"
-#include "TLibVideoIO/TVideoIO.h"
-#include "TLibVideoIO/TVideoIOYuv.h"
-#include "TLibVideoIO/TVideoIOY4m.h"
+#include "input/input.h"
+#include "output/output.h"
 #include <sstream>
 
 //! \ingroup TAppEncoder
@@ -57,12 +54,13 @@
 class TAppEncCfg
 {
 protected:
+    x265::Input*  m_input;
+    x265::Output* m_recon;
 
     // file I/O
-    Char*     m_pchInputFile;                                 ///< source file name
     Char*     m_pchBitstreamFile;                             ///< output bitstream file
-    Char*     m_pchReconFile;                                 ///< output reconstruction file
     Double    m_adLambdaModifier[MAX_TLAYER];                 ///< Lambda modifier array for each temporal layer
+
     // source specification
     Int       m_iFrameRate;                                   ///< source frame-rates (Hz)
     UInt      m_FrameSkip;                                    ///< number of skipped frames from the beginning
@@ -75,12 +73,6 @@ protected:
     Int       m_confBottom;
     Int       m_framesToBeEncoded;                            ///< number of encoded frames
     Int       m_aiPad[2];                                     ///< number of padded pixels for width and height
-    //Input source file handlers
-    TVideoIO* m_cTVideoIOInputFile;     ///< input  file
-    TVideoIO* m_cTVideoIOReconFile;     ///< output reconstruction file
-    hnd_t*    handler_input;
-    hnd_t*    handler_recon;
-    video_info_t  video_info;
 
     // profile/level
     Profile::Name m_profile;
@@ -342,7 +334,6 @@ protected:
     Int*      m_avgPicRate;                                   ///< Indicates avg. picture rate information for various sub-layers
     Int*      m_constantPicRateIdc;                           ///< Indicates constant picture rate idc for various sub-layers
 #endif
-#
 
 public:
 

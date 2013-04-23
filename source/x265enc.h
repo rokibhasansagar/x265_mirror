@@ -31,64 +31,73 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/** \file     TVideoIOYuv.h
-    \brief    YUV file I/O class (header)
+/** \file     TAppEncTop.h
+    \brief    Encoder application class (header)
 */
 
-#ifndef __TVIDEOIOYUV__
-#define __TVIDEOIOYUV__
+#ifndef __TAPPENCTOP__
+#define __TAPPENCTOP__
 
-#include <stdio.h>
-#include <fstream>
-#include <iostream>
-#include "TVideoIO.h"
-#include "TLibCommon/CommonDef.h"
-#include "TLibCommon/TComPicYuv.h"
+#include <list>
+#include <ostream>
 
-using namespace std;
+#include "TLibEncoder/TEncTop.h"
+#include "TLibCommon/AccessUnit.h"
+#include "x265cfg.h"
 
-typedef struct
-{
-    fstream   m_cHandle;                                  ///< file handle
-    Int fileBitDepthY; ///< bitdepth of input/output video file luma component
-    Int fileBitDepthC; ///< bitdepth of input/output video file chroma component
-    Int bitDepthShiftY; ///< number of bits to increase or decrease luma by before/after write/read
-    Int bitDepthShiftC; ///< number of bits to increase or decrease chroma by before/after write/read
-    Int aiPad[2];
-}yuv_hnd_t;
+//! \ingroup TAppEncoder
+//! \{
 
 // ====================================================================================================================
 // Class definition
 // ====================================================================================================================
 
-/// YUV file I/O class
-class TVideoIOYuv :  virtual public TVideoIO
+/// encoder application class
+class TAppEncTop : public TAppEncCfg
 {
+private:
+
+    // class interface
+    TEncTop                    m_cTEncTop;                    ///< encoder class
+
+    TComList<TComPicYuv *>     m_cListPicYuvRec;              ///< list of reconstruction YUV files
+
+    Int                        m_iFrameRcvd;                  ///< number of received frames
+
+    UInt m_essentialBytes;
+    UInt m_totalBytes;
+
+protected:
+
+    // initialization
+    Void  xCreateLib();                                       ///< create files & encoder class
+    Void  xInitLibCfg();                                      ///< initialize internal variables
+    Void  xInitLib();                                         ///< initialize encoder class
+    Void  xDestroyLib();                                      ///< destroy encoder class
+
+    /// obtain required buffers
+    Void xGetBuffer(TComPicYuv*& rpcPicYuvRec);
+
+    /// delete allocated buffers
+    Void  xDeleteBuffer();
+
+    // file I/O
+    Void xWriteOutput(std::ostream &bitstreamFile, Int iNumEncoded, const std::list<AccessUnit>& accessUnits); ///< write bitstream to file
+    void rateStatsAccum(const AccessUnit &au, const std::vector<UInt>& stats);
+    void printRateSummary();
+
 public:
 
-    TVideoIOYuv()           {}
+    TAppEncTop();
+    virtual ~TAppEncTop();
 
-    virtual ~TVideoIOYuv()  {}
+    Void        encode();                                     ///< main encoding function
+    TEncTop    &getTEncTop()
+    {
+        return m_cTEncTop;    ///< return encoder class pointer reference
+    }
+}; // END CLASS DEFINITION TAppEncTop
 
-    Void  open(Char * pchFile,
-               Bool bWriteMode,
-               Int internalBitDepthY,
-               Int fileBitDepthY,
-               Int internalBitDepthC,
-               Int fileBitDepthC,
-               hnd_t * &handler,
-               video_info_t video_info,
-               Int aiPad[2]);                                                                                                                                                                 ///< open or create file
-    Void  close(hnd_t* &handler);                                          ///< close file
+//! \}
 
-    Void skipFrames(UInt numFrames, UInt width, UInt height, hnd_t* &handler);
-
-    Bool  read(TComPicYuv * pPicYuv, hnd_t* &handler);        ///< read  one YUV frame with padding parameter
-    Bool  write(TComPicYuv* pPicYuv, hnd_t* &handler, Int confLeft = 0, Int confRight = 0, Int confTop = 0, Int confBottom = 0);
-
-    Bool  isEof(hnd_t* &handler);                                          ///< check for end-of-file
-    Bool  isFail(hnd_t* &handler);                                         ///< check for failure
-    Void  getVideoInfo(video_info_t &video_info, hnd_t* &handler);
-};
-
-#endif // __TVIDEOIOYUV__
+#endif // __TAPPENCTOP__
