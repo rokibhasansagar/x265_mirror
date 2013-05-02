@@ -37,6 +37,16 @@ int CDECL sad_4x16(pixel * piOrg, intptr_t strideOrg, pixel * piCur, intptr_t st
 }
 
 template<int ly>
+int CDECL sad_8x8(pixel * piOrg, intptr_t strideOrg, pixel * piCur, intptr_t strideCur)
+{
+    /* groups of 8x16 blocks, upcasting sum from short to int often enough to avoid overflow */
+    int sum = 0;
+    for (int row = 0; row < ly; row += 8)
+        sum += sad_8<8>(piOrg + row * strideOrg, strideOrg, piCur + row * strideCur, strideCur);
+    return sum;
+}
+
+template<int ly>
 int CDECL sad_8x16(pixel * piOrg, intptr_t strideOrg, pixel * piCur, intptr_t strideCur)
 {
     /* groups of 8x16 blocks, upcasting sum from short to int often enough to avoid overflow */
@@ -202,7 +212,7 @@ void Setup_Vec_PixelPrimitives(EncoderPrimitives &p)
     p.sad[PARTITION_8x8] = sad_8<8>;
     p.sad[PARTITION_8x12] = sad_8<12>;
     p.sad[PARTITION_8x16] = sad_8<16>;
-    p.sad[PARTITION_8x24] = sad_8<24>;
+    p.sad[PARTITION_8x24] = sad_8x8<24>;
     p.sad[PARTITION_8x32] = sad_8x16<32>;
     p.sad[PARTITION_8x64] = sad_8x16<64>;
 
@@ -238,9 +248,7 @@ void Setup_Vec_PixelPrimitives(EncoderPrimitives &p)
     p.sad[PARTITION_64x32] = sad_16x16<64, 32>;
     p.sad[PARTITION_64x64] = sad_16x16<64, 64>;
 
-#if HIGH_BIT_DEPTH
-
-    // sad_x3
+    //sad_x3
     p.sad_x3[PARTITION_4x4] = sad_4_4_x3<4, 4>;
     p.sad_x3[PARTITION_4x8] = sad_4_x3<4, 8>;
     p.sad_x3[PARTITION_4x12] = sad_4_4_x3<4, 12>;
@@ -289,7 +297,7 @@ void Setup_Vec_PixelPrimitives(EncoderPrimitives &p)
     p.sad_x3[PARTITION_64x32] = sad_64_x3<64, 32>;
     p.sad_x3[PARTITION_64x64] = sad_64_x3<64, 64>;
 
-    // sad_x4
+    //// sad_x4
     p.sad_x4[PARTITION_4x4] = sad_4_4_x4<4, 4>;
     p.sad_x4[PARTITION_4x8] = sad_4_x4<4, 8>;
     p.sad_x4[PARTITION_4x12] = sad_4_4_x4<4, 12>;
@@ -322,9 +330,9 @@ void Setup_Vec_PixelPrimitives(EncoderPrimitives &p)
     p.sad_x4[PARTITION_16x32] = sad_16_x4<16, 32>;
     p.sad_x4[PARTITION_16x64] = sad_16_x4<16, 64>;
 
-    p.sad_x4[PARTITION_32x4] = sad_32_x4<32, 4>;
+    p.sad_x4[PARTITION_32x4] = sad_32_4_x4<32, 4>;
     p.sad_x4[PARTITION_32x8] = sad_32_x4<32, 8>;
-    p.sad_x4[PARTITION_32x12] = sad_32_x4<32, 12>;
+    p.sad_x4[PARTITION_32x12] = sad_32_4_x4<32, 12>;
     p.sad_x4[PARTITION_32x16] = sad_32_x4<32, 16>;
     p.sad_x4[PARTITION_32x24] = sad_32_x4<32, 24>;
     p.sad_x4[PARTITION_32x32] = sad_32_x4<32, 32>;
@@ -338,7 +346,7 @@ void Setup_Vec_PixelPrimitives(EncoderPrimitives &p)
     p.sad_x4[PARTITION_64x32] = sad_64_x4<64, 32>;
     p.sad_x4[PARTITION_64x64] = sad_64_x4<64, 64>;
 
-
+#if HIGH_BIT_DEPTH
     // satd
     p.satd[PARTITION_4x4] = satd_4x4;
     p.satd[PARTITION_4x8] = satd<4, 8>;
