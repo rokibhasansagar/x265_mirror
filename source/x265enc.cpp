@@ -191,35 +191,6 @@ Void TAppEncTop::xInitLibCfg()
     //====== Parallel Merge Estimation ========
     m_cTEncTop.setLog2ParallelMergeLevelMinus2(m_log2ParallelMergeLevel - 2);
 
-    //====== Slice ========
-    m_cTEncTop.setSliceMode(m_sliceMode);
-    m_cTEncTop.setSliceArgument(m_sliceArgument);
-
-    //====== Dependent Slice ========
-    m_cTEncTop.setSliceSegmentMode(m_sliceSegmentMode);
-    m_cTEncTop.setSliceSegmentArgument(m_sliceSegmentArgument);
-    Int iNumPartInCU = 1 << (m_uiMaxCUDepth << 1);
-    if (m_sliceSegmentMode == FIXED_NUMBER_OF_LCU)
-    {
-        m_cTEncTop.setSliceSegmentArgument(m_sliceSegmentArgument * iNumPartInCU);
-    }
-
-    if (m_sliceMode == FIXED_NUMBER_OF_LCU)
-    {
-        m_cTEncTop.setSliceArgument(m_sliceArgument * iNumPartInCU);
-    }
-
-    if (m_sliceMode == FIXED_NUMBER_OF_TILES)
-    {
-        m_cTEncTop.setSliceArgument(m_sliceArgument);
-    }
-
-    if (m_sliceMode == 0)
-    {
-        m_bLFCrossSliceBoundaryFlag = true;
-    }
-
-    m_cTEncTop.setLFCrossSliceBoundaryFlag(m_bLFCrossSliceBoundaryFlag);
     m_cTEncTop.setUseSAO(m_bUseSAO);
     m_cTEncTop.setMaxNumOffsetsPerPic(m_maxNumOffsetsPerPic);
 
@@ -270,23 +241,7 @@ Void TAppEncTop::xInitLibCfg()
     m_cTEncTop.setDecodingUnitInfoSEIEnabled(m_decodingUnitInfoSEIEnabled);
     m_cTEncTop.setSOPDescriptionSEIEnabled(m_SOPDescriptionSEIEnabled);
     m_cTEncTop.setScalableNestingSEIEnabled(m_scalableNestingSEIEnabled);
-    m_cTEncTop.setUniformSpacingIdr(m_iUniformSpacingIdr);
-    m_cTEncTop.setNumColumnsMinus1(m_iNumColumnsMinus1);
-    m_cTEncTop.setNumRowsMinus1(m_iNumRowsMinus1);
-    if (m_iUniformSpacingIdr == 0)
-    {
-        m_cTEncTop.setColumnWidth(m_pColumnWidth);
-        m_cTEncTop.setRowHeight(m_pRowHeight);
-    }
 
-    m_cTEncTop.xCheckGSParameters();
-    Int uiTilesCount          = (m_iNumRowsMinus1 + 1) * (m_iNumColumnsMinus1 + 1);
-    if (uiTilesCount == 1)
-    {
-        m_bLFCrossTileBoundaryFlag = true;
-    }
-
-    m_cTEncTop.setLFCrossTileBoundaryFlag(m_bLFCrossTileBoundaryFlag);
     m_cTEncTop.setWaveFrontSynchro(m_iWaveFrontSynchro);
     m_cTEncTop.setWaveFrontSubstreams(m_iWaveFrontSubstreams);
     m_cTEncTop.setTMVPModeId(m_TMVPModeId);
@@ -330,7 +285,6 @@ Void TAppEncTop::xInitLibCfg()
     m_cTEncTop.setPocProportionalToTimingFlag(m_pocProportionalToTimingFlag);
     m_cTEncTop.setNumTicksPocDiffOneMinus1(m_numTicksPocDiffOneMinus1);
     m_cTEncTop.setBitstreamRestrictionFlag(m_bitstreamRestrictionFlag);
-    m_cTEncTop.setTilesFixedStructureFlag(m_tilesFixedStructureFlag);
     m_cTEncTop.setMotionVectorsOverPicBoundariesFlag(m_motionVectorsOverPicBoundariesFlag);
     m_cTEncTop.setMinSpatialSegmentationIdc(m_minSpatialSegmentationIdc);
     m_cTEncTop.setMaxBytesPerPicDenom(m_maxBytesPerPicDenom);

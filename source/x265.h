@@ -166,18 +166,6 @@ typedef struct
     int       m_bUseCbfFastMode;                  ///< flag for using Cbf Fast PU Mode Decision
     int       m_useEarlySkipDetection;            ///< flag for using Early SKIP Detection
 
-    int       m_sliceMode;                        ///< 0: no slice limits, 1 : max number of CTBs per slice, 2: max number of bytes per slice,
-                                                  ///< 3: max number of tiles per slice
-    int       m_sliceArgument;                    ///< argument according to selected slice mode
-    int       m_sliceSegmentMode;                 ///< 0: no slice segment limits, 1 : max number of CTBs per slice segment, 2: max number of bytes per slice segment,
-                                                  ///< 3: max number of tiles per slice segment
-    int       m_sliceSegmentArgument;             ///< argument according to selected slice segment mode
-
-    int       m_bLFCrossSliceBoundaryFlag;        ///< 1: filter across slice boundaries 0: do not filter across slice boundaries
-    int       m_bLFCrossTileBoundaryFlag;         ///< 1: filter across tile boundaries  0: do not filter across tile boundaries
-    int       m_iUniformSpacingIdr;
-    int       m_iNumColumnsMinus1;
-    int       m_iNumRowsMinus1;
     int       m_iWaveFrontSynchro;                ///< 0: no WPP. >= 1: WPP is enabled, the "Top right" from which inheritance occurs is this LCU offset in the line above the current.
     int       m_iWaveFrontSubstreams;             ///< If iWaveFrontSynchro, this is the number of substreams per frame (dependent tiles) or per tile (independent tiles).
 
@@ -275,7 +263,6 @@ typedef struct
     int       m_pocProportionalToTimingFlag;      ///< Indicates that the POC value is proportional to the output time w.r.t. first picture in CVS
     int       m_numTicksPocDiffOneMinus1;         ///< Number of ticks minus 1 that for a POC difference of one
     int       m_bitstreamRestrictionFlag;         ///< Signals whether bitstream restriction parameters are present
-    int       m_tilesFixedStructureFlag;          ///< Indicates that each active picture parameter set has the same values of the syntax elements related to tiles
     int       m_motionVectorsOverPicBoundariesFlag;///< Indicates that no samples outside the picture boundaries are used for inter prediction
     int       m_minSpatialSegmentationIdc;        ///< Indicates the maximum size of the spatial segments in the pictures in the coded video sequence
     int       m_maxBytesPerPicDenom;              ///< Indicates a number of bytes not exceeded by the sum of the sizes of the VCL NAL units associated with any coded picture

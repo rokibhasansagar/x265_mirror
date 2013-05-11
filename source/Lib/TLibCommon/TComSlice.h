@@ -649,7 +649,6 @@ private:
     Bool m_frameFieldInfoPresentFlag;
     Bool m_hrdParametersPresentFlag;
     Bool m_bitstreamRestrictionFlag;
-    Bool m_tilesFixedStructureFlag;
     Bool m_motionVectorsOverPicBoundariesFlag;
     Bool m_restrictedRefPicListsFlag;
     Int  m_minSpatialSegmentationIdc;
@@ -684,7 +683,6 @@ public:
         , m_frameFieldInfoPresentFlag(false)
         , m_hrdParametersPresentFlag(false)
         , m_bitstreamRestrictionFlag(false)
-        , m_tilesFixedStructureFlag(false)
         , m_motionVectorsOverPicBoundariesFlag(true)
         , m_restrictedRefPicListsFlag(1)
         , m_minSpatialSegmentationIdc(0)
@@ -783,10 +781,6 @@ public:
     Bool getBitstreamRestrictionFlag() { return m_bitstreamRestrictionFlag; }
 
     Void setBitstreamRestrictionFlag(Bool i) { m_bitstreamRestrictionFlag = i; }
-
-    Bool getTilesFixedStructureFlag() { return m_tilesFixedStructureFlag; }
-
-    Void setTilesFixedStructureFlag(Bool i) { m_tilesFixedStructureFlag = i; }
 
     Bool getMotionVectorsOverPicBoundariesFlag() { return m_motionVectorsOverPicBoundariesFlag; }
 
@@ -1180,16 +1174,9 @@ private:
 
     Bool        m_TransquantBypassEnableFlag; // Indicates presence of cu_transquant_bypass_flag in CUs.
     Bool        m_useTransformSkip;
-    Bool        m_dependentSliceSegmentsEnabledFlag;   //!< Indicates the presence of dependent slices
-    Bool        m_tilesEnabledFlag;            //!< Indicates the presence of tiles
     Bool        m_entropyCodingSyncEnabledFlag; //!< Indicates the presence of wavefronts
 
     Bool     m_loopFilterAcrossTilesEnabledFlag;
-    Bool     m_uniformSpacingFlag;
-    Int      m_iNumColumnsMinus1;
-    UInt*    m_puiColumnWidth;
-    Int      m_iNumRowsMinus1;
-    UInt*    m_puiRowHeight;
 
     Int      m_iNumSubstreams;
 
@@ -1199,7 +1186,6 @@ private:
     UInt     m_encCABACTableIdx;         // Used to transmit table selection across slices
 
     Bool     m_sliceHeaderExtensionPresentFlag;
-    Bool     m_loopFilterAcrossSlicesEnabledFlag;
     Bool     m_deblockingFilterControlPresentFlag;
     Bool     m_deblockingFilterOverrideEnabledFlag;
     Bool     m_picDisableDeblockingFilterFlag;
@@ -1292,59 +1278,9 @@ public:
 
     Bool    getLoopFilterAcrossTilesEnabledFlag()          { return m_loopFilterAcrossTilesEnabledFlag;   }
 
-    Bool    getDependentSliceSegmentsEnabledFlag() const     { return m_dependentSliceSegmentsEnabledFlag; }
-
-    Void    setDependentSliceSegmentsEnabledFlag(Bool val)   { m_dependentSliceSegmentsEnabledFlag = val; }
-
-    Bool    getTilesEnabledFlag() const                      { return m_tilesEnabledFlag; }
-
-    Void    setTilesEnabledFlag(Bool val)                    { m_tilesEnabledFlag = val; }
-
     Bool    getEntropyCodingSyncEnabledFlag() const          { return m_entropyCodingSyncEnabledFlag; }
 
     Void    setEntropyCodingSyncEnabledFlag(Bool val)        { m_entropyCodingSyncEnabledFlag = val; }
-
-    Void     setUniformSpacingFlag(Bool b)          { m_uniformSpacingFlag = b; }
-
-    Bool     getUniformSpacingFlag()                  { return m_uniformSpacingFlag; }
-
-    Void     setNumColumnsMinus1(Int i)           { m_iNumColumnsMinus1 = i; }
-
-    Int      getNumColumnsMinus1()                  { return m_iNumColumnsMinus1; }
-
-    Void     setColumnWidth(UInt* columnWidth)
-    {
-        if (m_uniformSpacingFlag == 0 && m_iNumColumnsMinus1 > 0)
-        {
-            m_puiColumnWidth = new UInt[m_iNumColumnsMinus1];
-
-            for (Int i = 0; i < m_iNumColumnsMinus1; i++)
-            {
-                m_puiColumnWidth[i] = columnWidth[i];
-            }
-        }
-    }
-
-    UInt     getColumnWidth(UInt columnIdx) { return *(m_puiColumnWidth + columnIdx); }
-
-    Void     setNumRowsMinus1(Int i)        { m_iNumRowsMinus1 = i; }
-
-    Int      getNumRowsMinus1()               { return m_iNumRowsMinus1; }
-
-    Void     setRowHeight(UInt* rowHeight)
-    {
-        if (m_uniformSpacingFlag == 0 && m_iNumRowsMinus1 > 0)
-        {
-            m_puiRowHeight = new UInt[m_iNumRowsMinus1];
-
-            for (Int i = 0; i < m_iNumRowsMinus1; i++)
-            {
-                m_puiRowHeight[i] = rowHeight[i];
-            }
-        }
-    }
-
-    UInt     getRowHeight(UInt rowIdx)    { return *(m_puiRowHeight + rowIdx); }
 
     Void     setNumSubstreams(Int iNumSubstreams)               { m_iNumSubstreams = iNumSubstreams; }
 
@@ -1400,10 +1336,6 @@ public:
     Int getNumExtraSliceHeaderBits() { return m_numExtraSliceHeaderBits; }
 
     Void setNumExtraSliceHeaderBits(Int i) { m_numExtraSliceHeaderBits = i; }
-
-    Void      setLoopFilterAcrossSlicesEnabledFlag(Bool bValue)    { m_loopFilterAcrossSlicesEnabledFlag = bValue; }
-
-    Bool      getLoopFilterAcrossSlicesEnabledFlag()                    { return m_loopFilterAcrossSlicesEnabledFlag;   }
 
     Bool getSliceHeaderExtensionPresentFlag()                    { return m_sliceHeaderExtensionPresentFlag; }
 
@@ -1494,14 +1426,8 @@ private:
     UInt        m_uiTLayer;
     Bool        m_bTLayerSwitchingFlag;
 
-    UInt        m_sliceMode;
-    UInt        m_sliceArgument;
-    UInt        m_sliceCurStartCUAddr;
     UInt        m_sliceCurEndCUAddr;
     UInt        m_sliceIdx;
-    UInt        m_sliceSegmentMode;
-    UInt        m_sliceSegmentArgument;
-    UInt        m_sliceSegmentCurStartCUAddr;
     UInt        m_sliceSegmentCurEndCUAddr;
     Bool        m_nextSlice;
     Bool        m_nextSliceSegment;
@@ -1522,7 +1448,6 @@ private:
     Bool       m_bLMvdL1Zero;
     Int         m_numEntryPointOffsets;
     Bool       m_temporalLayerNonReferenceFlag;
-    Bool       m_LFCrossSliceBoundaryFlag;
 
     Bool       m_enableTMVPFlag;
 
@@ -1741,18 +1666,6 @@ public:
 
     UInt getMaxNumMergeCand()                  { return m_maxNumMergeCand;                   }
 
-    Void setSliceMode(UInt uiMode)     { m_sliceMode = uiMode;                     }
-
-    UInt getSliceMode()                  { return m_sliceMode;                       }
-
-    Void setSliceArgument(UInt uiArgument) { m_sliceArgument = uiArgument;             }
-
-    UInt getSliceArgument()                  { return m_sliceArgument;                   }
-
-    Void setSliceCurStartCUAddr(UInt uiAddr)     { m_sliceCurStartCUAddr = uiAddr;           }
-
-    UInt getSliceCurStartCUAddr()                  { return m_sliceCurStartCUAddr;             }
-
     Void setSliceCurEndCUAddr(UInt uiAddr)     { m_sliceCurEndCUAddr = uiAddr;             }
 
     UInt getSliceCurEndCUAddr()                  { return m_sliceCurEndCUAddr;               }
@@ -1762,17 +1675,6 @@ public:
     UInt getSliceIdx()                  { return m_sliceIdx;                       }
 
     Void copySliceInfo(TComSlice *pcSliceSrc);
-    Void setSliceSegmentMode(UInt uiMode)     { m_sliceSegmentMode = uiMode;              }
-
-    UInt getSliceSegmentMode()                  { return m_sliceSegmentMode;                }
-
-    Void setSliceSegmentArgument(UInt uiArgument) { m_sliceSegmentArgument = uiArgument;      }
-
-    UInt getSliceSegmentArgument()                  { return m_sliceSegmentArgument;            }
-
-    Void setSliceSegmentCurStartCUAddr(UInt uiAddr)     { m_sliceSegmentCurStartCUAddr = uiAddr;    }
-
-    UInt getSliceSegmentCurStartCUAddr()                  { return m_sliceSegmentCurStartCUAddr;      }
 
     Void setSliceSegmentCurEndCUAddr(UInt uiAddr)     { m_sliceSegmentCurEndCUAddr = uiAddr;      }
 
@@ -1849,10 +1751,6 @@ public:
     Bool      getTemporalLayerNonReferenceFlag()       { return m_temporalLayerNonReferenceFlag; }
 
     Void      setTemporalLayerNonReferenceFlag(Bool x) { m_temporalLayerNonReferenceFlag = x; }
-
-    Void      setLFCrossSliceBoundaryFlag(Bool val)    { m_LFCrossSliceBoundaryFlag = val; }
-
-    Bool      getLFCrossSliceBoundaryFlag()                { return m_LFCrossSliceBoundaryFlag; }
 
     Void      setEnableTMVPFlag(Bool b)    { m_enableTMVPFlag = b; }
 

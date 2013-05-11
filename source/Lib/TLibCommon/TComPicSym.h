@@ -51,42 +51,6 @@ class TComSampleAdaptiveOffset;
 // Class definition
 // ====================================================================================================================
 
-class TComTile
-{
-private:
-
-    UInt      m_uiTileWidth;
-    UInt      m_uiTileHeight;
-    UInt      m_uiRightEdgePosInCU;
-    UInt      m_uiBottomEdgePosInCU;
-    UInt      m_uiFirstCUAddr;
-
-public:
-
-    TComTile();
-    virtual ~TComTile();
-
-    Void      setTileWidth(UInt i)            { m_uiTileWidth = i; }
-
-    UInt      getTileWidth()                  { return m_uiTileWidth; }
-
-    Void      setTileHeight(UInt i)           { m_uiTileHeight = i; }
-
-    UInt      getTileHeight()                 { return m_uiTileHeight; }
-
-    Void      setRightEdgePosInCU(UInt i)     { m_uiRightEdgePosInCU = i; }
-
-    UInt      getRightEdgePosInCU()           { return m_uiRightEdgePosInCU; }
-
-    Void      setBottomEdgePosInCU(UInt i)    { m_uiBottomEdgePosInCU = i; }
-
-    UInt      getBottomEdgePosInCU()          { return m_uiBottomEdgePosInCU; }
-
-    Void      setFirstCUAddr(UInt i)          { m_uiFirstCUAddr = i; }
-
-    UInt      getFirstCUAddr()                { return m_uiFirstCUAddr; }
-};
-
 /// picture symbol class
 class TComPicSym
 {
@@ -111,12 +75,6 @@ private:
     TComDataCU**  m_apcTComDataCU;      ///< array of CU data
 
     Int           m_iTileBoundaryIndependenceIdr;
-    Int           m_iNumColumnsMinus1;
-    Int           m_iNumRowsMinus1;
-    TComTile**    m_apcTComTile;
-    UInt*         m_puiCUOrderMap;     //the map of LCU raster scan address relative to LCU encoding order
-    UInt*         m_puiTileIdxMap;     //the map of the tile index relative to LCU raster scan address
-    UInt*         m_puiInverseCUOrderMap;
 
     SAOParam *m_saoParam;
 
@@ -152,33 +110,6 @@ public:
 
     UInt        getNumPartInHeight()      { return m_uiNumPartInHeight; }
 
-    Void         setNumColumnsMinus1(Int i)                          { m_iNumColumnsMinus1 = i; }
-
-    Int          getNumColumnsMinus1()                               { return m_iNumColumnsMinus1; }
-
-    Void         setNumRowsMinus1(Int i)                             { m_iNumRowsMinus1 = i; }
-
-    Int          getNumRowsMinus1()                                  { return m_iNumRowsMinus1; }
-
-    Int          getNumTiles()                                       { return (m_iNumRowsMinus1 + 1) * (m_iNumColumnsMinus1 + 1); }
-
-    TComTile*    getTComTile(UInt tileIdx)                           { return *(m_apcTComTile + tileIdx); }
-
-    Void         setCUOrderMap(UInt encCUOrder, Int cuAddr)          { *(m_puiCUOrderMap + encCUOrder) = cuAddr; }
-
-    UInt         getCUOrderMap(UInt encCUOrder)                      { return *(m_puiCUOrderMap + (encCUOrder >= m_uiNumCUsInFrame ? m_uiNumCUsInFrame : encCUOrder)); }
-
-    UInt         getTileIdxMap(Int i)                                { return *(m_puiTileIdxMap + i); }
-
-    Void         setInverseCUOrderMap(UInt cuAddr, UInt encCUOrder)  { *(m_puiInverseCUOrderMap + cuAddr) = encCUOrder; }
-
-    UInt         getInverseCUOrderMap(UInt cuAddr)                   { return *(m_puiInverseCUOrderMap + (cuAddr >= m_uiNumCUsInFrame ? m_uiNumCUsInFrame : cuAddr)); }
-
-    UInt         getPicSCUEncOrder(UInt SCUAddr);
-    UInt         getPicSCUAddr(UInt SCUEncOrder);
-    Void         xCreateTComTileArray();
-    Void         xInitTiles();
-    UInt         xCalculateNxtCUAddr(UInt uiCurrCUAddr);
     Void allocSaoParam(TComSampleAdaptiveOffset *sao);
     SAOParam *getSaoParam() { return m_saoParam; }
 }; // END CLASS DEFINITION TComPicSym
