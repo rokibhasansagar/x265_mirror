@@ -195,24 +195,12 @@ protected:
     Bool      m_usePCM;
     UInt      m_pcmLog2MaxSize;
     UInt      m_uiPCMLog2MinSize;
-    //====== Slice ========
-    Int       m_sliceMode;
-    Int       m_sliceArgument;
-    //====== Dependent Slice ========
-    Int       m_sliceSegmentMode;
-    Int       m_sliceSegmentArgument;
-    Bool      m_bLFCrossSliceBoundaryFlag;
 
     Bool      m_bPCMInputBitDepthFlag;
     UInt      m_uiPCMBitDepthLuma;
     UInt      m_uiPCMBitDepthChroma;
     Bool      m_bPCMFilterDisableFlag;
     Bool      m_loopFilterAcrossTilesEnabledFlag;
-    Int       m_iUniformSpacingIdr;
-    Int       m_iNumColumnsMinus1;
-    UInt*     m_puiColumnWidth;
-    Int       m_iNumRowsMinus1;
-    UInt*     m_puiRowHeight;
 
     Int       m_iWaveFrontSynchro;
     Int       m_iWaveFrontSubstreams;
@@ -303,7 +291,6 @@ protected:
     Bool      m_pocProportionalToTimingFlag;                  ///< Indicates that the POC value is proportional to the output time w.r.t. first picture in CVS
     Int       m_numTicksPocDiffOneMinus1;                     ///< Number of ticks minus 1 that for a POC difference of one
     Bool      m_bitstreamRestrictionFlag;                     ///< Signals whether bitstream restriction parameters are present
-    Bool      m_tilesFixedStructureFlag;                      ///< Indicates that each active picture parameter set has the same values of the syntax elements related to tiles
     Bool      m_motionVectorsOverPicBoundariesFlag;           ///< Indicates that no samples outside the picture boundaries are used for inter prediction
     Int       m_minSpatialSegmentationIdc;                    ///< Indicates the maximum size of the spatial segments in the pictures in the coded video sequence
     Int       m_maxBytesPerPicDenom;                          ///< Indicates a number of bytes not exceeded by the sum of the sizes of the VCL NAL units associated with any coded picture
@@ -316,14 +303,10 @@ protected:
 public:
 
     TEncCfg()
-        : m_puiColumnWidth()
-        , m_puiRowHeight()
     {}
 
     virtual ~TEncCfg()
     {
-        delete[] m_puiColumnWidth;
-        delete[] m_puiRowHeight;
     }
 
     Void      setProfile(Profile::Name profile) { m_profile = profile; }
@@ -576,28 +559,6 @@ public:
 
     UInt      getDeltaQpRD()      { return m_uiDeltaQpRD; }
 
-    //====== Slice ========
-    Void  setSliceMode(Int i)       { m_sliceMode = i;              }
-
-    Void  setSliceArgument(Int i)       { m_sliceArgument = i;          }
-
-    Int   getSliceMode()              { return m_sliceMode;           }
-
-    Int   getSliceArgument()              { return m_sliceArgument;       }
-
-    //====== Dependent Slice ========
-    Void  setSliceSegmentMode(Int i)      { m_sliceSegmentMode = i;       }
-
-    Void  setSliceSegmentArgument(Int i)      { m_sliceSegmentArgument = i;   }
-
-    Int   getSliceSegmentMode()              { return m_sliceSegmentMode;    }
-
-    Int   getSliceSegmentArgument()              { return m_sliceSegmentArgument; }
-
-    Void      setLFCrossSliceBoundaryFlag(Bool bValue)    { m_bLFCrossSliceBoundaryFlag = bValue; }
-
-    Bool      getLFCrossSliceBoundaryFlag()                    { return m_bLFCrossSliceBoundaryFlag;   }
-
     Void      setUseSAO(Bool bVal)     { m_bUseSAO = bVal; }
 
     Bool      getUseSAO()              { return m_bUseSAO; }
@@ -618,53 +579,6 @@ public:
 
     Bool  getLFCrossTileBoundaryFlag()                    { return m_loopFilterAcrossTilesEnabledFlag;   }
 
-    Void  setUniformSpacingIdr(Int i)           { m_iUniformSpacingIdr = i; }
-
-    Int   getUniformSpacingIdr()                  { return m_iUniformSpacingIdr; }
-
-    Void  setNumColumnsMinus1(Int i)           { m_iNumColumnsMinus1 = i; }
-
-    Int   getNumColumnsMinus1()                  { return m_iNumColumnsMinus1; }
-
-    Void  setColumnWidth(UInt* columnWidth)
-    {
-        if (m_iUniformSpacingIdr == 0 && m_iNumColumnsMinus1 > 0)
-        {
-            Int  m_iWidthInCU = (m_iSourceWidth % g_uiMaxCUWidth) ? m_iSourceWidth / g_uiMaxCUWidth + 1 : m_iSourceWidth / g_uiMaxCUWidth;
-            m_puiColumnWidth = new UInt[m_iNumColumnsMinus1];
-
-            for (Int i = 0; i < m_iNumColumnsMinus1; i++)
-            {
-                m_puiColumnWidth[i] = columnWidth[i];
-                printf("col: m_iWidthInCU= %4d i=%4d width= %4d\n", m_iWidthInCU, i, m_puiColumnWidth[i]); //AFU
-            }
-        }
-    }
-
-    UInt  getColumnWidth(UInt columnidx)  { return *(m_puiColumnWidth + columnidx); }
-
-    Void  setNumRowsMinus1(Int i)           { m_iNumRowsMinus1 = i; }
-
-    Int   getNumRowsMinus1()                  { return m_iNumRowsMinus1; }
-
-    Void  setRowHeight(UInt* rowHeight)
-    {
-        if (m_iUniformSpacingIdr == 0 && m_iNumRowsMinus1 > 0)
-        {
-            Int  m_iHeightInCU = (m_iSourceHeight % g_uiMaxCUHeight) ? m_iSourceHeight / g_uiMaxCUHeight + 1 : m_iSourceHeight / g_uiMaxCUHeight;
-            m_puiRowHeight = new UInt[m_iNumRowsMinus1];
-
-            for (Int i = 0; i < m_iNumRowsMinus1; i++)
-            {
-                m_puiRowHeight[i] = rowHeight[i];
-                printf("row: m_iHeightInCU=%4d i=%4d height=%4d\n", m_iHeightInCU, i, m_puiRowHeight[i]); //AFU
-            }
-        }
-    }
-
-    UInt  getRowHeight(UInt rowIdx)     { return *(m_puiRowHeight + rowIdx); }
-
-    Void  xCheckGSParameters();
     Void  setWaveFrontSynchro(Int iWaveFrontSynchro)       { m_iWaveFrontSynchro = iWaveFrontSynchro; }
 
     Int   getWaveFrontsynchro()                            { return m_iWaveFrontSynchro; }
@@ -1010,10 +924,6 @@ public:
     Bool      getBitstreamRestrictionFlag()                 { return m_bitstreamRestrictionFlag; }
 
     Void      setBitstreamRestrictionFlag(Bool i)           { m_bitstreamRestrictionFlag = i; }
-
-    Bool      getTilesFixedStructureFlag()                  { return m_tilesFixedStructureFlag; }
-
-    Void      setTilesFixedStructureFlag(Bool i)            { m_tilesFixedStructureFlag = i; }
 
     Bool      getMotionVectorsOverPicBoundariesFlag()       { return m_motionVectorsOverPicBoundariesFlag; }
 

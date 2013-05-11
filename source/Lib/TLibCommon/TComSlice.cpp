@@ -75,14 +75,8 @@ TComSlice::TComSlice()
 #endif
     , m_uiTLayer(0)
     , m_bTLayerSwitchingFlag(false)
-    , m_sliceMode(0)
-    , m_sliceArgument(0)
-    , m_sliceCurStartCUAddr(0)
     , m_sliceCurEndCUAddr(0)
     , m_sliceIdx(0)
-    , m_sliceSegmentMode(0)
-    , m_sliceSegmentArgument(0)
-    , m_sliceSegmentCurStartCUAddr(0)
     , m_sliceSegmentCurEndCUAddr(0)
     , m_nextSlice(false)
     , m_nextSliceSegment(false)
@@ -713,14 +707,8 @@ Void TComSlice::copySliceInfo(TComSlice *pSrc)
     m_uiTLayer                      = pSrc->m_uiTLayer;
     m_bTLayerSwitchingFlag          = pSrc->m_bTLayerSwitchingFlag;
 
-    m_sliceMode                   = pSrc->m_sliceMode;
-    m_sliceArgument               = pSrc->m_sliceArgument;
-    m_sliceCurStartCUAddr         = pSrc->m_sliceCurStartCUAddr;
     m_sliceCurEndCUAddr           = pSrc->m_sliceCurEndCUAddr;
     m_sliceIdx                    = pSrc->m_sliceIdx;
-    m_sliceSegmentMode            = pSrc->m_sliceSegmentMode;
-    m_sliceSegmentArgument        = pSrc->m_sliceSegmentArgument;
-    m_sliceSegmentCurStartCUAddr  = pSrc->m_sliceSegmentCurStartCUAddr;
     m_sliceSegmentCurEndCUAddr    = pSrc->m_sliceSegmentCurEndCUAddr;
     m_nextSlice                    = pSrc->m_nextSlice;
     m_nextSliceSegment             = pSrc->m_nextSliceSegment;
@@ -738,7 +726,6 @@ Void TComSlice::copySliceInfo(TComSlice *pSrc)
     m_numEntryPointOffsets  = pSrc->m_numEntryPointOffsets;
 
     m_bLMvdL1Zero = pSrc->m_bLMvdL1Zero;
-    m_LFCrossSliceBoundaryFlag = pSrc->m_LFCrossSliceBoundaryFlag;
     m_enableTMVPFlag                = pSrc->m_enableTMVPFlag;
     m_maxNumMergeCand               = pSrc->m_maxNumMergeCand;
 }
@@ -1422,21 +1409,13 @@ TComPPS::TComPPS()
     , m_numRefIdxL1DefaultActive(1)
     , m_TransquantBypassEnableFlag(false)
     , m_useTransformSkip(false)
-    , m_dependentSliceSegmentsEnabledFlag(false)
-    , m_tilesEnabledFlag(false)
     , m_entropyCodingSyncEnabledFlag(false)
     , m_loopFilterAcrossTilesEnabledFlag(true)
-    , m_uniformSpacingFlag(0)
-    , m_iNumColumnsMinus1(0)
-    , m_puiColumnWidth(NULL)
-    , m_iNumRowsMinus1(0)
-    , m_puiRowHeight(NULL)
     , m_iNumSubstreams(1)
     , m_signHideFlag(0)
     , m_cabacInitPresentFlag(false)
     , m_encCABACTableIdx(I_SLICE)
     , m_sliceHeaderExtensionPresentFlag(false)
-    , m_loopFilterAcrossSlicesEnabledFlag(false)
     , m_listsModificationPresentFlag(0)
     , m_numExtraSliceHeaderBits(0)
 {
@@ -1445,16 +1424,6 @@ TComPPS::TComPPS()
 
 TComPPS::~TComPPS()
 {
-    if (m_iNumColumnsMinus1 > 0 && m_uniformSpacingFlag == 0)
-    {
-        if (m_puiColumnWidth) delete [] m_puiColumnWidth;
-        m_puiColumnWidth = NULL;
-    }
-    if (m_iNumRowsMinus1 > 0 && m_uniformSpacingFlag == 0)
-    {
-        if (m_puiRowHeight) delete [] m_puiRowHeight;
-        m_puiRowHeight = NULL;
-    }
     delete m_scalingList;
 }
 

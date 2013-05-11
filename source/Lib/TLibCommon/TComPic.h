@@ -117,7 +117,7 @@ public:
 
     Int           getPOC()              { return m_apcPicSym->getSlice(m_uiCurrSliceIdx)->getPOC(); }
 
-    TComDataCU*&  getCU(UInt uiCUAddr)  { return m_apcPicSym->getCU(uiCUAddr); }
+    TComDataCU*   getCU(UInt uiCUAddr)  { return m_apcPicSym->getCU(uiCUAddr); }
 
     TComPicYuv*   getPicYuvOrg()        { return m_apcPicYuv[0]; }
 
@@ -179,10 +179,8 @@ public:
     Window&       getDefDisplayWindow()   { return m_defaultDisplayWindow; }
 
     Void          createNonDBFilterInfo(std::vector<Int> sliceStartAddress, Int sliceGranularityDepth
-                                        , std::vector<Bool>* LFCrossSliceBoundary
-                                        , Int  numTiles = 1
                                         , Bool bNDBFilterCrossTileBoundary = true);
-    Void          createNonDBFilterInfoLCU(Int tileID, Int sliceID, TComDataCU* pcCU, UInt startSU, UInt endSU, Int sliceGranularyDepth, UInt picWidth, UInt picHeight);
+    Void          createNonDBFilterInfoLCU(Int sliceID, TComDataCU* pcCU, UInt startSU, UInt endSU, Int sliceGranularyDepth, UInt picWidth, UInt picHeight);
     Void          destroyNonDBFilterInfo();
 
     Bool          getValidSlice(Int sliceID)  { return m_pbValidSlice[sliceID]; }

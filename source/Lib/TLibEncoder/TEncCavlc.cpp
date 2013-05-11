@@ -156,7 +156,7 @@ Void TEncCavlc::codePPS(TComPPS* pcPPS)
 
     WRITE_UVLC(pcPPS->getPPSId(),                             "pps_pic_parameter_set_id");
     WRITE_UVLC(pcPPS->getSPSId(),                             "pps_seq_parameter_set_id");
-    WRITE_FLAG(pcPPS->getDependentSliceSegmentsEnabledFlag()    ? 1 : 0, "dependent_slice_segments_enabled_flag");
+    WRITE_FLAG(0,                                             "dependent_slice_segments_enabled_flag");
     WRITE_FLAG(pcPPS->getOutputFlagPresentFlag() ? 1 : 0,     "output_flag_present_flag");
     WRITE_CODE(pcPPS->getNumExtraSliceHeaderBits(), 3,        "num_extra_slice_header_bits");
     WRITE_FLAG(pcPPS->getSignHideFlag(), "sign_data_hiding_flag");
@@ -179,31 +179,9 @@ Void TEncCavlc::codePPS(TComPPS* pcPPS)
     WRITE_FLAG(pcPPS->getUseWP() ? 1 : 0,  "weighted_pred_flag");   // Use of Weighting Prediction (P_SLICE)
     WRITE_FLAG(pcPPS->getWPBiPred() ? 1 : 0, "weighted_bipred_flag");  // Use of Weighting Bi-Prediction (B_SLICE)
     WRITE_FLAG(pcPPS->getTransquantBypassEnableFlag() ? 1 : 0, "transquant_bypass_enable_flag");
-    WRITE_FLAG(pcPPS->getTilesEnabledFlag()             ? 1 : 0, "tiles_enabled_flag");
+    WRITE_FLAG(0,                                                 "tiles_enabled_flag");
     WRITE_FLAG(pcPPS->getEntropyCodingSyncEnabledFlag() ? 1 : 0, "entropy_coding_sync_enabled_flag");
-    if (pcPPS->getTilesEnabledFlag())
-    {
-        WRITE_UVLC(pcPPS->getNumColumnsMinus1(),                                    "num_tile_columns_minus1");
-        WRITE_UVLC(pcPPS->getNumRowsMinus1(),                                       "num_tile_rows_minus1");
-        WRITE_FLAG(pcPPS->getUniformSpacingFlag(),                                  "uniform_spacing_flag");
-        if (pcPPS->getUniformSpacingFlag() == 0)
-        {
-            for (UInt i = 0; i < pcPPS->getNumColumnsMinus1(); i++)
-            {
-                WRITE_UVLC(pcPPS->getColumnWidth(i) - 1,                                  "column_width_minus1");
-            }
-
-            for (UInt i = 0; i < pcPPS->getNumRowsMinus1(); i++)
-            {
-                WRITE_UVLC(pcPPS->getRowHeight(i) - 1,                                    "row_height_minus1");
-            }
-        }
-        if (pcPPS->getNumColumnsMinus1() != 0 || pcPPS->getNumRowsMinus1() != 0)
-        {
-            WRITE_FLAG(pcPPS->getLoopFilterAcrossTilesEnabledFlag() ? 1 : 0,          "loop_filter_across_tiles_enabled_flag");
-        }
-    }
-    WRITE_FLAG(pcPPS->getLoopFilterAcrossSlicesEnabledFlag() ? 1 : 0,        "loop_filter_across_slices_enabled_flag");
+    WRITE_FLAG(1,                                                            "loop_filter_across_slices_enabled_flag");
     WRITE_FLAG(pcPPS->getDeblockingFilterControlPresentFlag() ? 1 : 0,       "deblocking_filter_control_present_flag");
     if (pcPPS->getDeblockingFilterControlPresentFlag())
     {
@@ -303,7 +281,7 @@ Void TEncCavlc::codeVUI(TComVUI *pcVUI, TComSPS* pcSPS)
     WRITE_FLAG(pcVUI->getBitstreamRestrictionFlag(),              "bitstream_restriction_flag");
     if (pcVUI->getBitstreamRestrictionFlag())
     {
-        WRITE_FLAG(pcVUI->getTilesFixedStructureFlag(),             "tiles_fixed_structure_flag");
+        WRITE_FLAG(0,                                                "tiles_fixed_structure_flag");
         WRITE_FLAG(pcVUI->getMotionVectorsOverPicBoundariesFlag(),  "motion_vectors_over_pic_boundaries_flag");
         WRITE_FLAG(pcVUI->getRestrictedRefPicListsFlag(),           "restricted_ref_pic_lists_flag");
         WRITE_UVLC(pcVUI->getMinSpatialSegmentationIdc(),           "min_spatial_segmentation_idc");
@@ -595,18 +573,10 @@ Void TEncCavlc::codeSliceHeader(TComSlice* pcSlice)
     }
 
     Int ctuAddress;
-    if (pcSlice->isNextSlice())
-    {
         // Calculate slice address
-        ctuAddress = (pcSlice->getSliceCurStartCUAddr() / pcSlice->getPic()->getNumPartInCU());
-    }
-    else
-    {
-        // Calculate slice address
-        ctuAddress = (pcSlice->getSliceSegmentCurStartCUAddr() / pcSlice->getPic()->getNumPartInCU());
-    }
+        ctuAddress = 0;
     //write slice address
-    Int sliceSegmentAddress = pcSlice->getPic()->getPicSym()->getCUOrderMap(ctuAddress);
+    Int sliceSegmentAddress = 0;
 
     WRITE_FLAG(sliceSegmentAddress == 0, "first_slice_segment_in_pic_flag");
     if (pcSlice->getRapPicFlag())
@@ -615,10 +585,6 @@ Void TEncCavlc::codeSliceHeader(TComSlice* pcSlice)
     }
     WRITE_UVLC(pcSlice->getPPS()->getPPSId(), "slice_pic_parameter_set_id");
     pcSlice->setDependentSliceSegmentFlag(!pcSlice->isNextSlice());
-    if (pcSlice->getPPS()->getDependentSliceSegmentsEnabledFlag() && (sliceSegmentAddress != 0))
-    {
-        WRITE_FLAG(pcSlice->getDependentSliceSegmentFlag() ? 1 : 0, "dependent_slice_segment_flag");
-    }
     if (sliceSegmentAddress > 0)
     {
         WRITE_CODE(sliceSegmentAddress, bitsSliceSegmentAddress, "slice_segment_address");
@@ -927,9 +893,9 @@ Void TEncCavlc::codeSliceHeader(TComSlice* pcSlice)
         Bool isSAOEnabled = (!pcSlice->getSPS()->getUseSAO()) ? (false) : (pcSlice->getSaoEnabledFlag() || pcSlice->getSaoEnabledFlagChroma());
         Bool isDBFEnabled = (!pcSlice->getDeblockingFilterDisable());
 
-        if (pcSlice->getPPS()->getLoopFilterAcrossSlicesEnabledFlag() && (isSAOEnabled || isDBFEnabled))
+        if (isSAOEnabled || isDBFEnabled)
         {
-            WRITE_FLAG(pcSlice->getLFCrossSliceBoundaryFlag() ? 1 : 0, "slice_loop_filter_across_slices_enabled_flag");
+            WRITE_FLAG(1, "slice_loop_filter_across_slices_enabled_flag");
         }
     }
     if (pcSlice->getPPS()->getSliceHeaderExtensionPresentFlag())
@@ -1004,46 +970,23 @@ Void TEncCavlc::codeProfileTier(ProfileTierLevel* ptl)
  */
 Void  TEncCavlc::codeTilesWPPEntryPoint(TComSlice* pSlice)
 {
-    if (!pSlice->getPPS()->getTilesEnabledFlag() && !pSlice->getPPS()->getEntropyCodingSyncEnabledFlag())
+    if (!pSlice->getPPS()->getEntropyCodingSyncEnabledFlag())
     {
         return;
     }
     UInt numEntryPointOffsets = 0, offsetLenMinus1 = 0, maxOffset = 0;
-    Int  numZeroSubstreamsAtStartOfSlice  = 0;
     UInt *entryPointOffset = NULL;
-    if (pSlice->getPPS()->getTilesEnabledFlag())
-    {
-        numEntryPointOffsets = pSlice->getTileLocationCount();
-        entryPointOffset     = new UInt[numEntryPointOffsets];
-        for (Int idx = 0; idx < pSlice->getTileLocationCount(); idx++)
-        {
-            if (idx == 0)
-            {
-                entryPointOffset[idx] = pSlice->getTileLocation(0);
-            }
-            else
-            {
-                entryPointOffset[idx] = pSlice->getTileLocation(idx) - pSlice->getTileLocation(idx - 1);
-            }
-
-            if (entryPointOffset[idx] > maxOffset)
-            {
-                maxOffset = entryPointOffset[idx];
-            }
-        }
-    }
-    else if (pSlice->getPPS()->getEntropyCodingSyncEnabledFlag())
+    if (pSlice->getPPS()->getEntropyCodingSyncEnabledFlag())
     {
         UInt* pSubstreamSizes               = pSlice->getSubstreamSizes();
         Int maxNumParts                       = pSlice->getPic()->getNumPartInCU();
-        numZeroSubstreamsAtStartOfSlice       = pSlice->getSliceSegmentCurStartCUAddr() / maxNumParts / pSlice->getPic()->getFrameWidthInCU();
         Int  numZeroSubstreamsAtEndOfSlice    = pSlice->getPic()->getFrameHeightInCU() - 1 - ((pSlice->getSliceSegmentCurEndCUAddr() - 1) / maxNumParts / pSlice->getPic()->getFrameWidthInCU());
-        numEntryPointOffsets                  = pSlice->getPPS()->getNumSubstreams() - numZeroSubstreamsAtStartOfSlice - numZeroSubstreamsAtEndOfSlice - 1;
+        numEntryPointOffsets                  = pSlice->getPPS()->getNumSubstreams() - numZeroSubstreamsAtEndOfSlice - 1;
         pSlice->setNumEntryPointOffsets(numEntryPointOffsets);
         entryPointOffset           = new UInt[numEntryPointOffsets];
         for (Int idx = 0; idx < numEntryPointOffsets; idx++)
         {
-            entryPointOffset[idx] = (pSubstreamSizes[idx + numZeroSubstreamsAtStartOfSlice] >> 3);
+            entryPointOffset[idx] = (pSubstreamSizes[idx] >> 3);
             if (entryPointOffset[idx] > maxOffset)
             {
                 maxOffset = entryPointOffset[idx];

@@ -75,7 +75,6 @@ enum NDBFBlockBorderTag
 /// Non-deblocking filter processing block information
 struct NDBFBlockInfo
 {
-    Int   tileID; //!< tile ID
     Int   sliceID; //!< slice ID
     UInt  startSU; //!< starting SU z-scan address in LCU
     UInt  endSU;  //!< ending SU z-scan address in LCU
@@ -88,7 +87,7 @@ struct NDBFBlockInfo
     Bool  isBorderAvailable[NUM_SGU_BORDER]; //!< the border availabilities
     Bool  allBordersAvailable;
 
-    NDBFBlockInfo() : tileID(0), sliceID(0), startSU(0), endSU(0) {} //!< constructor
+    NDBFBlockInfo() : sliceID(0), startSU(0), endSU(0) {} //!< constructor
 
     const NDBFBlockInfo& operator =(const NDBFBlockInfo& src); //!< "=" operator
 };
@@ -192,8 +191,6 @@ private:
     UInt          m_uiTotalDistortion; ///< sum of partition distortion
     UInt          m_uiTotalBits;      ///< sum of partition bits
     UInt          m_uiTotalBins;     ///< sum of partition bins
-    UInt*         m_sliceStartCU;  ///< Start CU address of current slice
-    UInt*         m_sliceSegmentStartCU; ///< Start CU address of current slice
     Char          m_codedQP;
 
 protected:
@@ -448,7 +445,6 @@ public:
     std::vector<NDBFBlockInfo>* getNDBFilterBlocks()      { return &m_vNDFBlock; }
 
     Void setNDBFilterBlockBorderAvailability(UInt numLCUInPicWidth, UInt numLCUInPicHeight, UInt numSUInLCUWidth, UInt numSUInLCUHeight, UInt picWidth, UInt picHeight
-                                             , std::vector<Bool>& LFCrossSliceBoundary
                                              , Bool bTopTileBoundary, Bool bDownTileBoundary, Bool bLeftTileBoundary, Bool bRightTileBoundary
                                              , Bool bIndependentTileBoundaryEnabled);
     // -------------------------------------------------------------------------------------------------------------------
@@ -565,8 +561,6 @@ public:
     UInt          getCtxSkipFlag(UInt uiAbsPartIdx);
     UInt          getCtxInterDir(UInt uiAbsPartIdx);
 
-    UInt          getSliceStartCU(UInt pos)                 { return m_sliceStartCU[pos - m_uiAbsIdxInLCU]; }
-    UInt          getSliceSegmentStartCU(UInt pos)          { return m_sliceSegmentStartCU[pos - m_uiAbsIdxInLCU]; }
     UInt&         getTotalBins()                            { return m_uiTotalBins; }
 
     // -------------------------------------------------------------------------------------------------------------------

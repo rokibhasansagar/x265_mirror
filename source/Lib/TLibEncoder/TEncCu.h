@@ -116,7 +116,7 @@ public:
     Void  destroy();
 
     /// CU analysis function
-    Void  compressCU(TComDataCU*& rpcCU);
+    Void  compressCU(TComDataCU* rpcCU);
 
     /// CU encoding function
     Void  encodeCU(TComDataCU* pcCU);
