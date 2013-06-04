@@ -137,12 +137,7 @@ public:
     TEncSearch();
     virtual ~TEncSearch();
 
-    Void init(TEncCfg*     pcEncCfg,
-              Int          iSearchRange,
-              Int          bipredSearchRange,
-              Int          iSearchMethod,
-              TComRdCost*  pcRdCost,
-              TEncSbac*    pcRDGoOnSbacCoder);
+    Void init(TEncCfg* pcEncCfg, TComRdCost* pcRdCost);
 
 protected:
 
@@ -166,7 +161,6 @@ protected:
     // sub-functions for ME
     __inline Void xTZSearchHelp(TComPattern* pcPatternKey, IntTZSearchStruct& rcStruct, const Int iSearchX, const Int iSearchY, const UChar ucPointNr, const UInt uiDistance);
     __inline Void xTZ2PointSearch(TComPattern* pcPatternKey, IntTZSearchStruct& rcStrukt, TComMv* pcMvSrchRngLT, TComMv* pcMvSrchRngRB);
-    __inline Void xTZ8PointSquareSearch(TComPattern* pcPatternKey, IntTZSearchStruct& rcStrukt, TComMv* pcMvSrchRngLT, TComMv* pcMvSrchRngRB, const Int iStartX, const Int iStartY, const Int iDist);
     __inline Void xTZ8PointDiamondSearch(TComPattern* pcPatternKey, IntTZSearchStruct& rcStrukt, TComMv* pcMvSrchRngLT, TComMv* pcMvSrchRngRB, const Int iStartX, const Int iStartY, const Int iDist);
 
     Void xGetInterPredictionError(TComDataCU* pcCU, TComYuv* pcYuvOrg, Int iPartIdx, UInt& ruiSAD, Bool Hadamard);
@@ -272,12 +266,10 @@ protected:
                               Bool         bLumaOnly,
                               TComYuv *     pcOrgYuv,
                               TComYuv *     pcPredYuv,
-                              TShortYUV *     pcResiYuv,
+                              TShortYUV *   pcResiYuv,
                               UInt &        ruiDistY,
                               UInt &        ruiDistC,
-#if HHI_RQT_INTRA_SPEEDUP
-                              Bool         bCheckFirst,
-#endif
+                              Bool          bCheckFirst,
                               Double &      dRDCost);
 
     Void  xSetIntraResultQT(TComDataCU* pcCU,
