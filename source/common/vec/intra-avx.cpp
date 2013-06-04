@@ -24,7 +24,7 @@
 /* this file instantiates AVX versions of the vectorized primitives */
 
 #if defined(_MSC_VER)
-#define ALWAYSINLINE  __forceinline
+#define ALWAYSINLINE  __inline
 #endif
 
 #define INSTRSET 7
