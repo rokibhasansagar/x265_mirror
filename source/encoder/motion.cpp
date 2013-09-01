@@ -25,6 +25,7 @@
 #include "common.h"
 #include "motion.h"
 #include "x265.h"
+#include "TLibCommon\TComRom.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -77,6 +78,9 @@ void MotionEstimate::setSourcePU(int offset, int width, int height)
     sa8d = primitives.sa8d_inter[partEnum];
     sad_x3 = primitives.sad_x3[partEnum];
     sad_x4 = primitives.sad_x4[partEnum];
+
+    blockwidth = width;
+    blockheight = height;
 }
 
 /* radius 2 hexagon. repeated entries are to avoid having to compute mod6 every time. */
@@ -142,8 +146,13 @@ static inline int x265_predictor_difference(const MV *mvc, intptr_t numCandidate
     do \
     { \
         MV fmv = qmv >> 2; \
-        pixel *qfref = ref->lumaPlane[qmv.x & 3][qmv.y & 3] + blockOffset; \
-        (cost) = sad(fenc, FENC_STRIDE, qfref + fmv.y * stride + fmv.x, stride); \
+        if ((qmv.x & 3) || (qmv.y & 3)) \
+        { \
+            generateSubpel(qmv, mref); \
+            cost = satd(fenc, FENC_STRIDE, mref->m_subpelbuf, 64) + mvcost(qmv); \
+        } \
+        else \
+            cost = satd(fenc, FENC_STRIDE, fref + fmv.y * stride + fmv.x, stride) + mvcost(qmv); \
     } while (0)
 
 #define COST_MV_X3_DIR(m0x, m0y, m1x, m1y, m2x, m2y, costs) \
@@ -254,6 +263,7 @@ int MotionEstimate::motionEstimate(ReferencePlanes *ref,
     ALIGN_VAR_16(int, costs[16]);
     size_t stride = ref->lumaStride;
     pixel *fref = ref->lumaPlane[0][0] + blockOffset;
+    MotionReference * mref = (MotionReference*)ref;
 
     setMVP(qmvp);
 
@@ -718,11 +728,11 @@ me_hex2:
                 {
                     pixel *pix_base = fref + tmv.y * stride + tmv.x;
                     sad_x4(fenc,
-                        pix_base,
-                        pix_base + 1,
-                        pix_base + 2,
-                        pix_base + 3,
-                        stride, costs);
+                           pix_base,
+                           pix_base + 1,
+                           pix_base + 2,
+                           pix_base + 3,
+                           stride, costs);
                     costs[0] += mvcost(tmv << 2);
                     COPY2_IF_LT(bcost, costs[0], bmv, tmv);
                     tmv.x++;
@@ -758,8 +768,20 @@ me_hex2:
     {
         MV qmv = bmv + square1[i] * 2;
         MV fmv = qmv >> 2;
-        pixel *qfref = ref->lumaPlane[qmv.x & 3][qmv.y & 3] + blockOffset;
-        int cost = satd(fenc, FENC_STRIDE, qfref + fmv.y * stride + fmv.x, stride) + mvcost(qmv);
+        int cost;
+
+        /* TODO this will go away until will use lumaplane */
+        pixel *fref = ref->lumaPlane[0][0] + blockOffset;
+
+        if ((qmv.x & 3) || (qmv.y & 3)) // if its not a FPEL then
+        {
+            generateSubpel(qmv, mref);
+            cost = satd(fenc, FENC_STRIDE, mref->m_subpelbuf, 64) + mvcost(qmv);
+        }
+        else
+        {
+            cost = satd(fenc, FENC_STRIDE, fref + fmv.y * stride + fmv.x, stride) + mvcost(qmv);
+        }
         COPY2_IF_LT(bcost, cost, bdir, i);
     }
 
@@ -773,8 +795,20 @@ me_hex2:
         {
             MV qmv = bmv + square1[i];
             MV fmv = qmv >> 2;
-            pixel *qfref = ref->lumaPlane[qmv.x & 3][qmv.y & 3] + blockOffset;
-            int cost = satd(fenc, FENC_STRIDE, qfref + fmv.y * stride + fmv.x, stride) + mvcost(qmv);
+            int cost;
+
+            /* TODO this will go away until will use lumaplane */
+            pixel *fref = ref->lumaPlane[0][0] + blockOffset;
+
+            if ((qmv.x & 3) || (qmv.y & 3)) // if its not a FPEL then
+            {
+                generateSubpel(qmv, mref);
+                cost = satd(fenc, FENC_STRIDE, mref->m_subpelbuf, 64) + mvcost(qmv);
+            }
+            else
+            {
+                cost = satd(fenc, FENC_STRIDE, fref + fmv.y * stride + fmv.x, stride) + mvcost(qmv);
+            }
             COPY2_IF_LT(bcost, cost, bdir, i);
         }
 
@@ -1026,4 +1060,47 @@ void MotionEstimate::StarPatternSearch(ReferencePlanes *ref,
         else if (++rounds >= earlyExitIters)
             return;
     } // dist > 8
+}
+
+void MotionEstimate::generateSubpel(MV qmv, MotionReference *mref)
+{
+    int xFrac = qmv.x & 0x3;
+    int yFrac = qmv.y & 0x3;
+
+    int srcStride = mref->lumaStride;
+    int dstStride = 64; //TODO: Replace with macro for max ctu size
+
+    int refOffset = (qmv.x >> 2) + (qmv.y >> 2) * srcStride;
+
+    /* TODO this will Go away untill we use lumaplane[][] */
+    Pel* src = mref->lumaPlane[0][0];
+
+    src = src + refOffset + blockOffset;
+    
+    if (yFrac == 0)
+    {
+        if (xFrac != 0)
+        {
+            x265::primitives.ipfilter_pp[FILTER_H_P_P_8]((pixel*)src, srcStride, (pixel*)mref->m_subpelbuf, dstStride, blockwidth, blockheight, g_lumaFilter[xFrac]);
+        }
+        else
+        {
+            x265::primitives.blockcpy_pp(blockwidth, blockheight, mref->m_subpelbuf, dstStride, src, srcStride);
+        }
+    }
+    else if (xFrac == 0)
+    {
+        x265::primitives.ipfilter_pp[FILTER_V_P_P_8]((pixel*)src, srcStride, (pixel*)mref->m_subpelbuf, dstStride, blockwidth, blockheight, g_lumaFilter[yFrac]);
+    }
+    else
+    {
+        int tmpStride = blockwidth;
+        int filterSize = NTAPS_LUMA;
+        int halfFilterSize = (filterSize >> 1);
+        Short *tmp = (Short*)X265_MALLOC(Short, blockwidth * (blockheight + filterSize - 1));
+
+        primitives.ipfilter_ps[FILTER_H_P_S_8]((pixel*)src - (halfFilterSize - 1) * srcStride,  srcStride, tmp, tmpStride, blockwidth, blockheight + filterSize - 1, g_lumaFilter[xFrac]);
+        primitives.ipfilter_sp[FILTER_V_S_P_8](tmp + (halfFilterSize - 1) * tmpStride, tmpStride, (pixel*)mref->m_subpelbuf, dstStride, blockwidth, blockheight, g_lumaFilter[yFrac]);
+        X265_FREE(tmp);
+    }    
 }
