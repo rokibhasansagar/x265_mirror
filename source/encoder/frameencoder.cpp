@@ -163,25 +163,36 @@ int FrameEncoder::getStreamHeaders(AccessUnit& accessUnit)
     TEncEntropy* entropyCoder = getEntropyCoder(0);
 
     entropyCoder->setEntropyCoder(&m_cavlcCoder, NULL);
+    NALUnitEBSP *tmp[MAX_NAL_UNITS] = {0, 0, 0, 0, 0};
+    int count = 0;
 
     /* headers for start of bitstream */
     OutputNALUnit nalu(NAL_UNIT_VPS);
     entropyCoder->setBitstream(&nalu.m_Bitstream);
     entropyCoder->encodeVPS(m_cfg->getVPS());
     writeRBSPTrailingBits(nalu.m_Bitstream);
-    accessUnit.push_back(new NALUnitEBSP(nalu));
+    CHECKED_MALLOC(tmp[count], NALUnitEBSP, 1);
+    tmp[count]->init(nalu);
+    accessUnit.push_back(tmp[count]);
+    count++;
 
     nalu = NALUnit(NAL_UNIT_SPS);
     entropyCoder->setBitstream(&nalu.m_Bitstream);
     entropyCoder->encodeSPS(&m_sps);
     writeRBSPTrailingBits(nalu.m_Bitstream);
-    accessUnit.push_back(new NALUnitEBSP(nalu));
+    CHECKED_MALLOC(tmp[count], NALUnitEBSP, 1);
+    tmp[count]->init(nalu);
+    accessUnit.push_back(tmp[count]);
+    count++;
 
     nalu = NALUnit(NAL_UNIT_PPS);
     entropyCoder->setBitstream(&nalu.m_Bitstream);
     entropyCoder->encodePPS(&m_pps);
     writeRBSPTrailingBits(nalu.m_Bitstream);
-    accessUnit.push_back(new NALUnitEBSP(nalu));
+    CHECKED_MALLOC(tmp[count], NALUnitEBSP, 1);
+    tmp[count]->init(nalu);
+    accessUnit.push_back(tmp[count]);
+    count++;
 
     if (m_cfg->getActiveParameterSetsSEIEnabled())
     {
@@ -195,7 +206,10 @@ int FrameEncoder::getStreamHeaders(AccessUnit& accessUnit)
         entropyCoder->setBitstream(&nalu.m_Bitstream);
         m_seiWriter.writeSEImessage(nalu.m_Bitstream, sei, &m_sps);
         writeRBSPTrailingBits(nalu.m_Bitstream);
-        accessUnit.push_back(new NALUnitEBSP(nalu));
+        CHECKED_MALLOC(tmp[count], NALUnitEBSP, 1);
+        tmp[count]->init(nalu);
+        accessUnit.push_back(tmp[count]);
+        count++;
     }
 
     if (m_cfg->getDisplayOrientationSEIAngle())
@@ -210,9 +224,14 @@ int FrameEncoder::getStreamHeaders(AccessUnit& accessUnit)
         entropyCoder->setBitstream(&nalu.m_Bitstream);
         m_seiWriter.writeSEImessage(nalu.m_Bitstream, sei, &m_sps);
         writeRBSPTrailingBits(nalu.m_Bitstream);
-        accessUnit.push_back(new NALUnitEBSP(nalu));
+        CHECKED_MALLOC(tmp[count], NALUnitEBSP, 1);
+        tmp[count]->init(nalu);
+        accessUnit.push_back(tmp[count]);
     }
     return 0;
+    
+fail:
+    return -1;
 }
 
 void FrameEncoder::initSlice(TComPic* pic)
@@ -843,6 +862,7 @@ void FrameEncoder::compressCTURows()
 
         m_rows[i].m_rdSbacCoders[0][CI_CURR_BEST]->load(&m_sbacCoder);
         m_rows[i].m_completed = 0;
+        m_rows[i].m_rdGoOnBinCodersCABAC.m_fracBits = 0;
     }
 
     UInt refLagRows = ((m_cfg->param.searchRange + NTAPS_LUMA/2 + g_maxCUHeight - 1) / g_maxCUHeight) + 1;
