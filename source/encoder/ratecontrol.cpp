@@ -62,48 +62,31 @@ static inline uint32_t acEnergyVar(uint64_t sum_ssd, int shift)
 /* Find the energy of each block in Y/Cb/Cr plane */
 static inline uint32_t acEnergyPlane(pixel* src, int srcStride, int bChroma)
 {
-    int blockStride = FENC_STRIDE >> 3;
-
     if (bChroma)
     {
         ALIGN_VAR_8(pixel, pix[8 * 8]);
-        primitives.blockcpy_pp(8, 8, pix, blockStride, src, srcStride);
-        return acEnergyVar(primitives.var[LUMA_8x8](pix, blockStride), 6);
+        primitives.blockcpy_pp(8, 8, pix, 8, src, srcStride);
+        return acEnergyVar(primitives.var[LUMA_8x8](pix, 8), 6);
     }
     else
         return acEnergyVar(primitives.var[LUMA_16x16](src, srcStride), 8);
 }
 
-/* Find the total AC energy of each CU in all planes */
-double RateControl::acEnergyCu(TComPic* pic, uint32_t cuAddr)
+/* Find the total AC energy of each block in all planes */
+double RateControl::acEnergyCu(TComPic* pic, uint32_t block_x, uint32_t block_y)
 {
-    uint32_t var = 0;
-    double avgQp = 0, strength = cfg->param.rc.aqStrength * 1.0397f;
-    pixel* srcLuma = pic->getPicYuvOrg()->getLumaAddr(cuAddr);
-    pixel* srcCb = pic->getPicYuvOrg()->getCbAddr(cuAddr);
-    pixel* srcCr = pic->getPicYuvOrg()->getCrAddr(cuAddr);
-    UInt blockWidth = g_maxCUWidth >> 2;
-    UInt blockHeight = g_maxCUHeight >> 2;
-    UInt frameStride = pic->getPicYuvOrg()->getStride();
-    UInt cStride = pic->getPicYuvOrg()->getCStride();
+    int stride = pic->getPicYuvOrg()->getStride();
+    int cStride = pic->getPicYuvOrg()->getCStride();
+    uint32_t blockOffsetLuma = block_x + (block_y * stride);
+    uint32_t blockOffsetChroma = (block_x >> 1) + ((block_y >> 1) * cStride);
 
-    /* Calculate Qp offset for each 16x16 block in the CU and average them over entire CU */
-    for (UInt h = 0, cnt = 0; h < g_maxCUHeight; h += blockHeight)
-    {
-        for (UInt w = 0; w < g_maxCUWidth; w += blockWidth, cnt++)
-        {
-            UInt blockOffsetLuma = w + (h * frameStride);
-            UInt blockOffsetChroma = (w >> 1) + ((h >> 1) * cStride);
-            var = acEnergyPlane(srcLuma + blockOffsetLuma, frameStride, 0);
-            var += acEnergyPlane(srcCb + blockOffsetChroma, cStride, 1);
-            var += acEnergyPlane(srcCr + blockOffsetChroma, cStride, 1);
-            avgQp += strength * (X265_LOG2(X265_MAX(var, 1)) - (14.427f));
-        }
-    }
-
-    avgQp /= 16;
+    uint32_t var;
+    var  = acEnergyPlane(pic->getPicYuvOrg()->getLumaAddr() + blockOffsetLuma, stride, 0);
+    var += acEnergyPlane(pic->getPicYuvOrg()->getCbAddr() + blockOffsetChroma, cStride, 1);
+    var += acEnergyPlane(pic->getPicYuvOrg()->getCrAddr() + blockOffsetChroma, cStride, 1);
     x265_emms();
-    return avgQp;
+    double strength = cfg->param.rc.aqStrength * 1.0397f;
+    return strength * (X265_LOG2(X265_MAX(var, 1)) - 14.427f);
 }
 
 void RateControl::calcAdaptiveQuantFrame(TComPic *pic)
@@ -111,16 +94,19 @@ void RateControl::calcAdaptiveQuantFrame(TComPic *pic)
     /* Actual adaptive quantization */
     if (cfg->param.rc.aqMode)
     {
-        int maxRows = pic->getPicSym()->getFrameHeightInCU();
-        int maxCols = pic->getPicSym()->getFrameWidthInCU();
-        for (int cu_y = 0; cu_y < maxRows; cu_y++)
+        int maxCol = pic->getPicYuvOrg()->getWidth();
+        int maxRow = pic->getPicYuvOrg()->getHeight();
+
+        /* Calculate Qp offset for each 16x16 block in the frame */
+        int block_xy = 0;
+        for (int block_y = 0; block_y < maxRow; block_y += 16)
         {
-            for (int cu_x = 0; cu_x < maxCols; cu_x++)
+            for (int block_x = 0; block_x < maxCol; block_x += 16)
             {
-                double qp_adj;
-                int cu_xy = maxCols * cu_y + cu_x;
-                qp_adj = acEnergyCu(pic, cu_xy);
-                pic->m_qpAqOffset[cu_xy] = qp_adj;
+                double qp_adj = acEnergyCu(pic, block_x, block_y);
+                pic->m_lowres.m_qpAqOffset[block_xy] = qp_adj;
+                pic->m_lowres.m_invQscaleFactor[block_xy] = x265_exp2fix8(qp_adj);
+                block_xy++;
             }
         }
     }
@@ -153,8 +139,8 @@ RateControl::RateControl(TEncCfg * _cfg)
         wantedBitsWindow = bitrate * frameDuration;
         lastNonBPictType = I_SLICE;
     }
-    ipOffset = 6.0 * (float)(X265_LOG2(cfg->param.rc.ipFactor));
-    pbOffset = 6.0 * (float)(X265_LOG2(cfg->param.rc.pbFactor));
+    ipOffset = 6.0 * X265_LOG2(cfg->param.rc.ipFactor);
+    pbOffset = 6.0 * X265_LOG2(cfg->param.rc.pbFactor);
     for (int i = 0; i < 3; i++)
     {
         lastQScaleFor[i] = qp2qScale(ABR_INIT_QP_MIN);

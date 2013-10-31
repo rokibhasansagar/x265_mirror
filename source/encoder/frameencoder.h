@@ -41,6 +41,7 @@
 #include "framefilter.h"
 #include "cturow.h"
 #include "ratecontrol.h"
+#include "reference.h"
 
 namespace x265 {
 // private x265 namespace
@@ -149,6 +150,8 @@ public:
     /* blocks until worker thread is done, returns encoded picture and bitstream */
     TComPic *getEncodedPicture(NALUnitEBSP **nalunits);
 
+    void setLambda(int qp , int row);
+
     // worker thread
     void threadMain();
 
@@ -160,14 +163,16 @@ public:
     TComSPS                  m_sps;
     TComPPS                  m_pps;
     RateControlEntry         m_rce;
+    SEIDecodedPictureHash    m_seiReconPictureDigest;
 
 protected:
 
     void determineSliceBounds();
-
+    int calcQpForCu(TComPic *pic, uint32_t cuAddr);
     Encoder*                 m_top;
     TEncCfg*                 m_cfg;
 
+    MotionReference          m_mref[2][MAX_NUM_REF + 1];
     WeightPredAnalysis       m_wp;
     TEncSbac                 m_sbacCoder;
     TEncBinCABAC             m_binCoderCABAC;

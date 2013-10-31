@@ -494,53 +494,28 @@ uint64_t Encoder::calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits)
     const char* digestStr = NULL;
     if (param.decodedPictureHashSEI)
     {
-        SEIDecodedPictureHash sei_recon_picture_digest;
         if (param.decodedPictureHashSEI == 1)
         {
-            /* calculate MD5sum for entire reconstructed picture */
-            sei_recon_picture_digest.method = SEIDecodedPictureHash::MD5;
-            calcMD5(*recon, sei_recon_picture_digest.digest);
-            digestStr = digestToString(sei_recon_picture_digest.digest, 16);
+            digestStr = digestToString(m_frameEncoder->m_seiReconPictureDigest.digest, 16);
         }
         else if (param.decodedPictureHashSEI == 2)
         {
-            sei_recon_picture_digest.method = SEIDecodedPictureHash::CRC;
-            calcCRC(*recon, sei_recon_picture_digest.digest);
-            digestStr = digestToString(sei_recon_picture_digest.digest, 2);
+            digestStr = digestToString(m_frameEncoder->m_seiReconPictureDigest.digest, 2);
         }
         else if (param.decodedPictureHashSEI == 3)
         {
-            sei_recon_picture_digest.method = SEIDecodedPictureHash::CHECKSUM;
-            calcChecksum(*recon, sei_recon_picture_digest.digest);
-            digestStr = digestToString(sei_recon_picture_digest.digest, 4);
+            digestStr = digestToString(m_frameEncoder->m_seiReconPictureDigest.digest, 4);
         }
-
-        /* write the SEI messages */
-        OutputNALUnit onalu(NAL_UNIT_SUFFIX_SEI, 0);
-        m_frameEncoder->m_seiWriter.writeSEImessage(onalu.m_Bitstream, sei_recon_picture_digest, pic->getSlice()->getSPS());
-        writeRBSPTrailingBits(onalu.m_Bitstream);
-
-        int count = 0;
-        while (nalunits[count] != NULL)
-        {
-            count++;
-        }
-
-        nalunits[count] = (NALUnitEBSP*)X265_MALLOC(NALUnitEBSP, 1);
-        if (nalunits[count])
-            nalunits[count]->init(onalu);
-        else
-            digestStr = NULL;
     }
 
     /* calculate the size of the access unit, excluding:
      *  - any AnnexB contributions (start_code_prefix, zero_byte, etc.,)
      *  - SEI NAL units
      */
-    UInt numRBSPBytes = 0;
+    uint32_t numRBSPBytes = 0;
     for (int count = 0; nalunits[count] != NULL; count++)
     {
-        UInt numRBSPBytes_nal = nalunits[count]->m_packetSize;
+        uint32_t numRBSPBytes_nal = nalunits[count]->m_packetSize;
 #if VERBOSE_RATE
         printf("*** %6s numBytesInNALunit: %u\n", nalUnitTypeToString((*it)->m_nalUnitType), numRBSPBytes_nal);
 #endif
@@ -550,7 +525,7 @@ uint64_t Encoder::calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits)
         }
     }
 
-    UInt bits = numRBSPBytes * 8;
+    uint32_t bits = numRBSPBytes * 8;
 
     //===== add PSNR =====
     m_analyzeAll.addResult(psnrY, psnrU, psnrV, (double)bits);
@@ -595,9 +570,9 @@ uint64_t Encoder::calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits)
             for (int list = 0; list < numLists; list++)
             {
                 fprintf(stderr, " [L%d ", list);
-                for (int ref = 0; ref < slice->getNumRefIdx(RefPicList(list)); ref++)
+                for (int ref = 0; ref < slice->getNumRefIdx(list); ref++)
                 {
-                    int k = slice->getRefPOC(RefPicList(list), ref) - slice->getLastIDR();
+                    int k = slice->getRefPOC(list, ref) - slice->getLastIDR();
                     fprintf(stderr, "%d ",k);
                 }
 
@@ -625,9 +600,9 @@ uint64_t Encoder::calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits)
                 for (int list = 0; list < numLists; list++)
                 {
                     fprintf(m_csvfpt, ", ");
-                    for (int ref = 0; ref < slice->getNumRefIdx(RefPicList(list)); ref++)
+                    for (int ref = 0; ref < slice->getNumRefIdx(list); ref++)
                     {
-                        int k = slice->getRefPOC(RefPicList(list), ref) - slice->getLastIDR();
+                        int k = slice->getRefPOC(list, ref) - slice->getLastIDR();
                         fprintf(m_csvfpt, " %d", k);
                     }
                 }
@@ -726,14 +701,14 @@ void Encoder::initSPS(TComSPS *sps)
 
     sps->setMaxTrSize(1 << m_quadtreeTULog2MaxSize);
 
-    for (UInt i = 0; i < g_maxCUDepth - g_addCUDepth; i++)
+    for (uint32_t i = 0; i < g_maxCUDepth - g_addCUDepth; i++)
     {
         sps->setAMPAcc(i, param.bEnableAMP);
     }
 
     sps->setUseAMP(param.bEnableAMP);
 
-    for (UInt i = g_maxCUDepth - g_addCUDepth; i < g_maxCUDepth; i++)
+    for (uint32_t i = g_maxCUDepth - g_addCUDepth; i < g_maxCUDepth; i++)
     {
         sps->setAMPAcc(i, 0);
     }
@@ -749,7 +724,7 @@ void Encoder::initSPS(TComSPS *sps)
     // TODO: hard-code these values in SPS code
     sps->setMaxTLayers(1);
     sps->setTemporalIdNestingFlag(true);
-    for (UInt i = 0; i < sps->getMaxTLayers(); i++)
+    for (uint32_t i = 0; i < sps->getMaxTLayers(); i++)
     {
         sps->setMaxDecPicBuffering(m_maxDecPicBuffering[i], i);
         sps->setNumReorderPics(m_numReorderPics[i], i);
@@ -809,7 +784,7 @@ void Encoder::initSPS(TComSPS *sps)
 void Encoder::initPPS(TComPPS *pps)
 {
     pps->setConstrainedIntraPred(param.bEnableConstrainedIntra);
-    bool bUseDQP = (getMaxCuDQPDepth() > 0) ? true : false;
+    bool bUseDQP = ((getMaxCuDQPDepth() > 0) || param.rc.aqMode) ? true : false;
 
     int lowestQP = -(6 * (X265_DEPTH - 8)); //m_cSPS.getQpBDOffsetY();
 
@@ -1266,7 +1241,7 @@ x265_encoder *x265_encoder_open(x265_param *param)
 }
 
 extern "C"
-int x265_encoder_headers(x265_encoder *enc, x265_nal **pp_nal, int *pi_nal)
+int x265_encoder_headers(x265_encoder *enc, x265_nal **pp_nal, uint32_t *pi_nal)
 {
     if (!pp_nal)
         return 0;
@@ -1300,7 +1275,7 @@ int x265_encoder_headers(x265_encoder *enc, x265_nal **pp_nal, int *pi_nal)
 }
 
 extern "C"
-int x265_encoder_encode(x265_encoder *enc, x265_nal **pp_nal, int *pi_nal, x265_picture *pic_in, x265_picture *pic_out)
+int x265_encoder_encode(x265_encoder *enc, x265_nal **pp_nal, uint32_t *pi_nal, x265_picture *pic_in, x265_picture *pic_out)
 {
     Encoder *encoder = static_cast<Encoder*>(enc);
     NALUnitEBSP *nalunits[MAX_NAL_UNITS] = { 0, 0, 0, 0, 0 };

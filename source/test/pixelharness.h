@@ -35,7 +35,7 @@ protected:
 
     int *ibuf1;
 
-    short *sbuf1, *sbuf2;
+    int16_t *sbuf1, *sbuf2;
 
     bool check_pixelcmp(pixelcmp_t ref, pixelcmp_t opt);
     bool check_pixelcmp_sp(pixelcmp_sp_t ref, pixelcmp_sp_t opt);
@@ -57,6 +57,7 @@ protected:
     bool check_cvt32to16_shr_t(cvt32to16_shr_t ref, cvt32to16_shr_t opt);
     bool check_pixelavg_pp(pixelavg_pp_t ref, pixelavg_pp_t opt);
 
+    bool check_block_copy_pp(copy_pp_t ref, copy_pp_t opt);
 public:
 
     PixelHarness();

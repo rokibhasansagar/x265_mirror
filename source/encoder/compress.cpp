@@ -26,6 +26,7 @@
 
 /* Lambda Partition Select adjusts the threshold value for Early Exit in No-RDO flow */
 #define LAMBDA_PARTITION_SELECT     0.9
+#define EARLY_EXIT                  1
 
 using namespace x265;
 
@@ -40,10 +41,10 @@ extern FILE* fp1;
 void TEncCu::xEncodeIntraInInter(TComDataCU* cu, TComYuv* fencYuv, TComYuv* predYuv,  TShortYUV* outResiYuv, TComYuv* outReconYuv)
 {
     UInt64 puCost = 0;
-    UInt puDistY = 0;
-    UInt puDistC = 0;
-    UInt depth = cu->getDepth(0);
-    UInt initTrDepth = cu->getPartitionSize(0) == SIZE_2Nx2N ? 0 : 1;
+    uint32_t puDistY = 0;
+    uint32_t puDistC = 0;
+    uint32_t depth = cu->getDepth(0);
+    uint32_t initTrDepth = cu->getPartitionSize(0) == SIZE_2Nx2N ? 0 : 1;
 
     // set context models
     m_search->m_rdGoOnSbacCoder->load(m_search->m_rdSbacCoders[depth][CI_CURR_BEST]);
@@ -84,16 +85,16 @@ void TEncCu::xEncodeIntraInInter(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
 
 void TEncCu::xComputeCostIntraInInter(TComDataCU* cu, PartSize partSize)
 {
-    UInt depth = cu->getDepth(0);
+    uint32_t depth = cu->getDepth(0);
 
     cu->setSkipFlagSubParts(false, 0, depth);
     cu->setPartSizeSubParts(partSize, 0, depth);
     cu->setPredModeSubParts(MODE_INTRA, 0, depth);
     cu->setCUTransquantBypassSubParts(m_cfg->getCUTransquantBypassFlagValue(), 0, depth);
 
-    UInt initTrDepth = cu->getPartitionSize(0) == SIZE_2Nx2N ? 0 : 1;
-    UInt width       = cu->getWidth(0) >> initTrDepth;
-    UInt partOffset  = 0;
+    uint32_t initTrDepth = cu->getPartitionSize(0) == SIZE_2Nx2N ? 0 : 1;
+    uint32_t width       = cu->getWidth(0) >> initTrDepth;
+    uint32_t partOffset  = 0;
 
     //===== init pattern for luma prediction =====
     cu->getPattern()->initPattern(cu, initTrDepth, partOffset);
@@ -102,14 +103,14 @@ void TEncCu::xComputeCostIntraInInter(TComDataCU* cu, PartSize partSize)
 
     Pel* fenc   = m_origYuv[depth]->getLumaAddr(0, width);
     Pel* pred   = m_modePredYuv[5][depth]->getLumaAddr(0, width);
-    UInt stride = m_modePredYuv[5][depth]->getStride();
+    uint32_t stride = m_modePredYuv[5][depth]->getStride();
 
     Pel *pAbove0 = m_search->refAbove    + width - 1;
     Pel *pAbove1 = m_search->refAboveFlt + width - 1;
     Pel *pLeft0  = m_search->refLeft     + width - 1;
     Pel *pLeft1  = m_search->refLeftFlt  + width - 1;
     int sad;
-    UInt bits, mode, bmode;
+    uint32_t bits, mode, bmode;
     UInt64 cost, bcost;
 
     // 33 Angle modes once
@@ -222,10 +223,15 @@ void TEncCu::xComputeCostInter(TComDataCU* outTempCU, TComYuv* outPredYuv, PartS
     m_tmpResiYuv[depth]->clear();
 
     //do motion compensation only for Luma since luma cost alone is calculated
+    outTempCU->m_totalBits = 0;
     m_search->predInterSearch(outTempCU, outPredYuv, bUseMRG, true, false);
-    int part = PartitionFromSizes(outTempCU->getWidth(0), outTempCU->getHeight(0));
-    outTempCU->m_totalCost = primitives.sse_pp[part](m_origYuv[depth]->getLumaAddr(), m_origYuv[depth]->getStride(),
-                                                     outPredYuv->getLumaAddr(), outPredYuv->getStride());
+    int part = partitionFromSizes(outTempCU->getWidth(0), outTempCU->getHeight(0));
+    uint32_t distortion = primitives.sse_pp[part](m_origYuv[depth]->getLumaAddr(), m_origYuv[depth]->getStride(),
+                                                  outPredYuv->getLumaAddr(), outPredYuv->getStride());
+    m_rdGoOnSbacCoder->load(m_rdSbacCoders[outTempCU->getDepth(0)][CI_CURR_BEST]);
+    outTempCU->m_totalBits = m_search->xSymbolBitsInter(outTempCU);
+
+    outTempCU->m_totalCost = m_rdCost->calcRdCost(distortion, outTempCU->m_totalBits);
 }
 
 void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTempCU, bool* earlyDetectionSkip, TComYuv*& bestPredYuv, TComYuv*& yuvReconBest)
@@ -235,7 +241,7 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
     UChar interDirNeighbours[MRG_MAX_NUM_CANDS];
     int numValidMergeCand = 0;
 
-    for (UInt i = 0; i < outTempCU->getSlice()->getMaxNumMergeCand(); ++i)
+    for (uint32_t i = 0; i < outTempCU->getSlice()->getMaxNumMergeCand(); ++i)
     {
         interDirNeighbours[i] = 0;
     }
@@ -245,6 +251,7 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
     outTempCU->setCUTransquantBypassSubParts(m_cfg->getCUTransquantBypassFlagValue(), 0, depth);
     outTempCU->getInterMergeCandidates(0, 0, mvFieldNeighbours, interDirNeighbours, numValidMergeCand);
 
+    int bestMergeCand = 0;
     for (int mergeCand = 0; mergeCand < numValidMergeCand; ++mergeCand)
     {
         // set MC parameters, interprets depth relative to LCU level
@@ -259,7 +266,7 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
 
         // do MC only for Luma part
         m_search->motionCompensation(outTempCU, m_tmpPredYuv[depth], REF_PIC_LIST_X, -1, true, false);
-        int part = PartitionFromSizes(outTempCU->getWidth(0), outTempCU->getHeight(0));
+        int part = partitionFromSizes(outTempCU->getWidth(0), outTempCU->getHeight(0));
 
         outTempCU->m_totalCost = primitives.sse_pp[part](m_origYuv[depth]->getLumaAddr(), m_origYuv[depth]->getStride(),
                                                          m_tmpPredYuv[depth]->getLumaAddr(), m_tmpPredYuv[depth]->getStride());
@@ -268,6 +275,7 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
 
         if (outTempCU->m_totalCost < outBestCU->m_totalCost)
         {
+            bestMergeCand = mergeCand;
             TComDataCU* tmp = outTempCU;
             outTempCU = outBestCU;
             outBestCU = tmp;
@@ -286,7 +294,44 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
     {
         m_search->motionCompensation(outBestCU, bestPredYuv, REF_PIC_LIST_X, partIdx, false, true);
     }
-    m_search->encodeResAndCalcRdInterCU(outBestCU, m_origYuv[depth], bestPredYuv, m_tmpResiYuv[depth], m_bestResiYuv[depth], yuvReconBest, false);
+
+    TComDataCU* tmp;
+    TComYuv *yuv;
+
+    outTempCU->setPredModeSubParts(MODE_INTER, 0, depth);
+    outTempCU->setCUTransquantBypassSubParts(m_cfg->getCUTransquantBypassFlagValue(), 0, depth);
+    outTempCU->setPartSizeSubParts(SIZE_2Nx2N, 0, depth);
+    outTempCU->setMergeFlagSubParts(true, 0, 0, depth);
+    outTempCU->setMergeIndexSubParts(bestMergeCand, 0, 0, depth);
+    outTempCU->setInterDirSubParts(interDirNeighbours[bestMergeCand], 0, 0, depth);
+    outTempCU->getCUMvField(REF_PIC_LIST_0)->setAllMvField(mvFieldNeighbours[0 + 2 * bestMergeCand], SIZE_2Nx2N, 0, 0);
+    outTempCU->getCUMvField(REF_PIC_LIST_1)->setAllMvField(mvFieldNeighbours[1 + 2 * bestMergeCand], SIZE_2Nx2N, 0, 0);
+
+    //No-residue mode
+    m_search->encodeResAndCalcRdInterCU(outTempCU, m_origYuv[depth], bestPredYuv, m_tmpResiYuv[depth], m_bestResiYuv[depth], m_tmpRecoYuv[depth], true);
+
+    tmp = outTempCU;
+    outTempCU = outBestCU;
+    outBestCU = tmp;
+
+    yuv = yuvReconBest;
+    yuvReconBest = m_tmpRecoYuv[depth];
+    m_tmpRecoYuv[depth] = yuv;
+
+    //Encode with residue
+    m_search->encodeResAndCalcRdInterCU(outTempCU, m_origYuv[depth], bestPredYuv, m_tmpResiYuv[depth], m_bestResiYuv[depth], m_tmpRecoYuv[depth], false);
+
+    if (outTempCU->m_totalCost < outBestCU->m_totalCost)    //Choose best from no-residue mode and residue mode
+    {
+        tmp = outTempCU;
+        outTempCU = outBestCU;
+        outBestCU = tmp;
+
+        yuv = yuvReconBest;
+        yuvReconBest = m_tmpRecoYuv[depth];
+        m_tmpRecoYuv[depth] = yuv;
+    }
+
     if (m_cfg->param.bEnableEarlySkip)
     {
         if (outBestCU->getQtRootCbf(0) == 0)
@@ -298,11 +343,11 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
             else
             {
                 bool allZero = true;
-                for (UInt list = 0; list < 2; list++)
+                for (uint32_t list = 0; list < 2; list++)
                 {
-                    if (outBestCU->getSlice()->getNumRefIdx(RefPicList(list)) > 0)
+                    if (outBestCU->getSlice()->getNumRefIdx(list) > 0)
                     {
-                        allZero &= !outBestCU->getCUMvField(RefPicList(list))->getMvd(0).word;
+                        allZero &= !outBestCU->getCUMvField(list)->getMvd(0).word;
                     }
                 }
 
@@ -318,7 +363,7 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
     x265_emms();
 }
 
-void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TComDataCU*& cu, UInt depth, UInt PartitionIndex)
+void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TComDataCU*& cu, uint32_t depth, uint32_t PartitionIndex)
 {
 #if CU_STAT_LOGFILE
     cntTotalCu[depth]++;
@@ -335,10 +380,10 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
     bool bSubBranch = true;
     bool bTrySplitDQP = true;
     bool bBoundary = false;
-    UInt lpelx = outTempCU->getCUPelX();
-    UInt rpelx = lpelx + outTempCU->getWidth(0)  - 1;
-    UInt tpely = outTempCU->getCUPelY();
-    UInt bpely = tpely + outTempCU->getHeight(0) - 1;
+    uint32_t lpelx = outTempCU->getCUPelX();
+    uint32_t rpelx = lpelx + outTempCU->getWidth(0)  - 1;
+    uint32_t tpely = outTempCU->getCUPelY();
+    uint32_t bpely = tpely + outTempCU->getHeight(0) - 1;
     TComDataCU* subTempPartCU, * subBestPartCU;
     int qp = outTempCU->getQP(0);
 
@@ -384,7 +429,6 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
         if (!earlyDetectionSkip)
         {
             /*Compute 2Nx2N mode costs*/
-            //if (depth == 0)
             {
                 xComputeCostInter(m_interCU_2Nx2N[depth], m_modePredYuv[0][depth], SIZE_2Nx2N);
                 /*Choose best mode; initialise outBestCU to 2Nx2N*/
@@ -393,15 +437,6 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
                 m_modePredYuv[0][depth] = m_bestPredYuv[depth];
                 m_bestPredYuv[depth] = tempYuv;
             }
-            //reusing the buffer gives md5 hash error - need to look into it. suspect it happens when inSlice condition is false.
-
-            /*else
-            {
-                outBestCU = m_interCU_NxN[PartitionIndex][depth];
-                tempYuv = m_bestPredYuvNxN[PartitionIndex][depth];
-                m_bestPredYuvNxN[PartitionIndex][depth] = m_bestPredYuv[depth];
-                m_bestPredYuv[depth] = tempYuv;
-            }*/
 
             bTrySplitDQP = bTrySplit;
 
@@ -531,52 +566,62 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
     // further split
     if (bSubBranch && bTrySplitDQP && depth < g_maxCUDepth - g_addCUDepth)
     {
-#if 0 // turn ON this to enable early exit
-        UInt64 nxnCost = 0;
-        if (outBestCU != 0 && depth > 0)
+#if EARLY_EXIT // turn ON this to enable early exit
+        // early exit when the RD cost of best mode at depth n is less than the avgerage of RD cost of the
+        // CU's(above, aboveleft, aboveright, left, colocated) at depth "n" of previosuly coded CU's
+        if (outBestCU != 0)
         {
-            outTempCU->initEstData(depth, qp);
-            UChar nextDepth = (UChar)(depth + 1);
-            /*Best CU initialised to NULL; */
-            subBestPartCU = NULL;
-            /*The temp structure is used for boundary analysis, and to copy Best SubCU mode data on return*/
-            nxnCost = 0;
-            for (UInt partUnitIdx = 0; partUnitIdx < 4; partUnitIdx++)
+            UInt64 costCU = 0, costCUAbove = 0, costCUAboveLeft = 0, costCUAboveRight = 0, costCULeft = 0, costCUColocated0 = 0, costCUColocated1 = 0, totalCost = 0, avgCost= 0;
+            UInt64 countCU = 0, countCUAbove = 0, countCUAboveLeft = 0, countCUAboveRight = 0, countCULeft = 0, countCUColocated0 = 0, countCUColocated1 = 0;
+            UInt64 totalCount = 0;
+            TComDataCU* above = outTempCU->getCUAbove();
+            TComDataCU* aboveLeft = outTempCU->getCUAboveLeft();
+            TComDataCU* aboveRight = outTempCU->getCUAboveRight();
+            TComDataCU* left = outTempCU->getCULeft();
+            TComDataCU* colocated0 = outTempCU->getCUColocated(REF_PIC_LIST_0);
+            TComDataCU* colocated1 = outTempCU->getCUColocated(REF_PIC_LIST_1);
+
+            costCU = outTempCU->m_avgCost[depth] * outTempCU->m_count[depth];
+            countCU = outTempCU->m_count[depth];
+            if (above)
             {
-                subTempPartCU = m_interCU_NxN[partUnitIdx][nextDepth];
-                subTempPartCU->initSubCU(outTempCU, partUnitIdx, nextDepth, qp);     // clear sub partition datas or init.
-                TComPic* subPic = subTempPartCU->getPic();
-                m_origYuv[nextDepth]->copyFromPicYuv(subPic->getPicYuvOrg(), subTempPartCU->getAddr(), subTempPartCU->getZorderIdxInCU());
-                TComSlice * pcSubSlice = subTempPartCU->getPic()->getSlice();
-                bool subSliceEnd = subTempPartCU->getSCUAddr() < slice->getSliceCurEndCUAddr()
-                    && pcSubSlice->getSliceCurEndCUAddr() < subTempPartCU->getSCUAddr() + subTempPartCU->getTotalNumPart();
-                if (!subSliceEnd && (subTempPartCU->getCUPelX() < slice->getSPS()->getPicWidthInLumaSamples()) &&
-                    (subTempPartCU->getCUPelY() < slice->getSPS()->getPicHeightInLumaSamples()))
-                {
-                    if (outBestCU->getPredictionMode(0) == 0)
-                    {
-                        xComputeCostInter(subTempPartCU, m_bestPredYuvNxN[partUnitIdx][nextDepth], outBestCU->getPartitionSize(0), 0);
-                        m_search->encodeResAndCalcRdInterCU(subTempPartCU, m_origYuv[nextDepth], m_bestPredYuvNxN[partUnitIdx][nextDepth], m_tmpResiYuv[nextDepth],
-                                                            m_bestResiYuv[nextDepth], m_tmpRecoYuv[nextDepth], false);
-                        nxnCost += subTempPartCU->m_totalCost;
-                    }
-                    else if (outBestCU->getPredictionMode(0) == 1)
-                    {
-                        xComputeCostIntraInInter(subTempPartCU, SIZE_2Nx2N);
-                        xEncodeIntraInInter(subTempPartCU, m_origYuv[nextDepth], m_modePredYuv[5][nextDepth], m_tmpResiYuv[nextDepth],  m_tmpRecoYuv[nextDepth]);
-                        nxnCost += subTempPartCU->m_totalCost;
-                    }
-                }
-                subTempPartCU->copyToPic((UChar)nextDepth);
+                costCUAbove = above->m_avgCost[depth] * above->m_count[depth];
+                countCUAbove = above->m_count[depth];
+            }
+            if (aboveLeft)
+            {
+                costCUAboveLeft = aboveLeft->m_avgCost[depth] * aboveLeft->m_count[depth];
+                countCUAboveLeft = aboveLeft->m_count[depth];
+            }
+            if (aboveRight)
+            {
+                costCUAboveRight = aboveRight->m_avgCost[depth] * aboveRight->m_count[depth];
+                countCUAboveRight = aboveRight->m_count[depth];
+            }
+            if (left)
+            {
+                costCULeft = left->m_avgCost[depth] * left->m_count[depth];
+                countCULeft = left->m_count[depth];
+            }
+            if (colocated0)
+            {
+                costCUColocated0 = colocated0->m_avgCost[depth] * colocated0->m_count[depth];
+                countCUColocated0 = colocated0->m_count[depth];
+            }
+            if (colocated1)
+            {
+                costCUColocated1 = colocated1->m_avgCost[depth] * colocated1->m_count[depth];
+                countCUColocated1 = colocated1->m_count[depth];
             }
 
-            float lambda = 1.0f;
-            if (outBestCU->getSlice()->getSliceType() == P_SLICE)
-                lambda = 0.9f;
-            else if (outBestCU->getSlice()->getSliceType() == B_SLICE)
-                lambda = 1.1f;
+            totalCost = costCU + costCUAbove + costCUAboveLeft + costCUAboveRight + costCULeft + costCUColocated0 + costCUColocated1;
+            totalCount = countCU + countCUAbove + countCUAboveLeft + countCUAboveRight + countCULeft + countCUColocated0 + countCUColocated1;
+            if (totalCount != 0)
+                avgCost = totalCost / totalCount;
 
-            if (outBestCU->m_totalCost < lambda * nxnCost)
+            float lambda = 1.0f;
+
+            if (outBestCU->m_totalCost < lambda * avgCost && avgCost != 0 && depth != 0)
             {
                 m_entropyCoder->resetBits();
                 m_entropyCoder->encodeSplitFlag(outBestCU, 0, depth, true);
@@ -590,11 +635,11 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
                 return;
             }
         }
-#endif // early exit
+#endif
         outTempCU->initEstData(depth, qp);
         UChar nextDepth = (UChar)(depth + 1);
         subTempPartCU = m_tempCU[nextDepth];
-        for (UInt nextDepth_partIndex = 0; nextDepth_partIndex < 4; nextDepth_partIndex++)
+        for (uint32_t nextDepth_partIndex = 0; nextDepth_partIndex < 4; nextDepth_partIndex++)
         {
             subBestPartCU = NULL;
             subTempPartCU->initSubCU(outTempCU, nextDepth_partIndex, nextDepth, qp); // clear sub partition datas or init.
@@ -612,7 +657,22 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
                     m_rdSbacCoders[nextDepth][CI_CURR_BEST]->load(m_rdSbacCoders[nextDepth][CI_NEXT_BEST]);
                 }
                 xCompressInterCU(subBestPartCU, subTempPartCU, outTempCU, nextDepth, nextDepth_partIndex);
-
+#if EARLY_EXIT
+                for (int k = 0; k < 4; k++)
+                {
+                    outTempCU->m_avgCost[k] = subTempPartCU->m_avgCost[k];
+                    outTempCU->m_count[k] = subTempPartCU->m_count[k];
+                }
+                if (subBestPartCU->getPredictionMode(0) != MODE_INTRA)
+                {
+                    UInt64 tempavgCost = subBestPartCU->m_totalCost;
+                    UInt64 temp = outTempCU->m_avgCost[depth + 1] * outTempCU->m_count[depth + 1];
+                    outTempCU->m_count[depth + 1] += 1;
+                    outTempCU->getPic()->getPicSym()->getCU(outTempCU->getAddr())->m_count[depth + 1] += 1;
+                    outTempCU->m_avgCost[depth + 1] = (temp + tempavgCost) / outTempCU->m_count[depth + 1];
+                    outTempCU->getPic()->getPicSym()->getCU(outTempCU->getAddr())->m_avgCost[depth + 1] = outTempCU->m_avgCost[depth + 1];
+                }
+#endif
                 /* Adding costs from best SUbCUs */
                 outTempCU->copyPartFrom(subBestPartCU, nextDepth_partIndex, nextDepth, true); // Keep best part data to current temporary data.
                 xCopyYuv2Tmp(subBestPartCU->getTotalNumPart() * nextDepth_partIndex, nextDepth);
@@ -637,7 +697,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
         if ((g_maxCUWidth >> depth) == outTempCU->getSlice()->getPPS()->getMinCuDQPSize() && outTempCU->getSlice()->getPPS()->getUseDQP())
         {
             bool hasResidual = false;
-            for (UInt uiBlkIdx = 0; uiBlkIdx < outTempCU->getTotalNumPart(); uiBlkIdx++)
+            for (uint32_t uiBlkIdx = 0; uiBlkIdx < outTempCU->getTotalNumPart(); uiBlkIdx++)
             {
                 if (outTempCU->getCbf(uiBlkIdx, TEXT_LUMA) || outTempCU->getCbf(uiBlkIdx, TEXT_CHROMA_U) ||
                     outTempCU->getCbf(uiBlkIdx, TEXT_CHROMA_V))
@@ -647,7 +707,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
                 }
             }
 
-            UInt targetPartIdx = 0;
+            uint32_t targetPartIdx = 0;
             if (hasResidual)
             {
                 bool foundNonZeroCbf = false;
@@ -708,6 +768,16 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
          * Copy recon data from Temp structure to Best structure */
         if (outBestCU)
         {
+            if (depth == 0)
+            {
+                UInt64 tempavgCost = outBestCU->m_totalCost;
+                UInt64 temp = outTempCU->m_avgCost[depth] * outTempCU->m_count[depth];
+                outTempCU->m_count[depth] += 1;
+                outTempCU->getPic()->getPicSym()->getCU(outTempCU->getAddr())->m_count[depth] += 1;
+
+                outTempCU->m_avgCost[depth] = (temp + tempavgCost) / outTempCU->m_count[depth];
+                outTempCU->getPic()->getPicSym()->getCU(outTempCU->getAddr())->m_avgCost[depth] = outTempCU->m_avgCost[depth];
+            }
             if (outTempCU->m_totalCost < outBestCU->m_totalCost)
             {
                 outBestCU = outTempCU;

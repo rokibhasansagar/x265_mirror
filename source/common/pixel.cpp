@@ -108,7 +108,7 @@ int sad(pixel *pix1, intptr_t stride_pix1, pixel *pix2, intptr_t stride_pix2)
 }
 
 template<int lx, int ly>
-void sad_x3(pixel *pix1, pixel *pix2, pixel *pix3, pixel *pix4, intptr_t frefstride, int *res)
+void sad_x3(pixel *pix1, pixel *pix2, pixel *pix3, pixel *pix4, intptr_t frefstride, int32_t *res)
 {
     res[0] = 0;
     res[1] = 0;
@@ -130,7 +130,7 @@ void sad_x3(pixel *pix1, pixel *pix2, pixel *pix3, pixel *pix4, intptr_t frefstr
 }
 
 template<int lx, int ly>
-void sad_x4(pixel *pix1, pixel *pix2, pixel *pix3, pixel *pix4, pixel *pix5, intptr_t frefstride, int *res)
+void sad_x4(pixel *pix1, pixel *pix2, pixel *pix3, pixel *pix4, pixel *pix5, intptr_t frefstride, int32_t *res)
 {
     res[0] = 0;
     res[1] = 0;
@@ -388,13 +388,13 @@ void blockcopy_p_p(int bx, int by, pixel *a, intptr_t stridea, pixel *b, intptr_
     }
 }
 
-void blockcopy_s_p(int bx, int by, short *a, intptr_t stridea, pixel *b, intptr_t strideb)
+void blockcopy_s_p(int bx, int by, int16_t *a, intptr_t stridea, pixel *b, intptr_t strideb)
 {
     for (int y = 0; y < by; y++)
     {
         for (int x = 0; x < bx; x++)
         {
-            a[x] = (short)b[x];
+            a[x] = (int16_t)b[x];
         }
 
         a += stridea;
@@ -402,7 +402,7 @@ void blockcopy_s_p(int bx, int by, short *a, intptr_t stridea, pixel *b, intptr_
     }
 }
 
-void blockcopy_p_s(int bx, int by, pixel *a, intptr_t stridea, short *b, intptr_t strideb)
+void blockcopy_p_s(int bx, int by, pixel *a, intptr_t stridea, int16_t *b, intptr_t strideb)
 {
     for (int y = 0; y < by; y++)
     {
@@ -416,13 +416,13 @@ void blockcopy_p_s(int bx, int by, pixel *a, intptr_t stridea, short *b, intptr_
     }
 }
 
-void blockcopy_s_c(int bx, int by, short *a, intptr_t stridea, uint8_t *b, intptr_t strideb)
+void blockcopy_s_c(int bx, int by, int16_t *a, intptr_t stridea, uint8_t *b, intptr_t strideb)
 {
     for (int y = 0; y < by; y++)
     {
         for (int x = 0; x < bx; x++)
         {
-            a[x] = (short)b[x];
+            a[x] = (int16_t)b[x];
         }
 
         a += stridea;
@@ -431,7 +431,7 @@ void blockcopy_s_c(int bx, int by, short *a, intptr_t stridea, uint8_t *b, intpt
 }
 
 template<int size>
-void blockfil_s_c(short *dst, intptr_t dstride, short val)
+void blockfil_s_c(int16_t *dst, intptr_t dstride, int16_t val)
 {
     for (int y = 0; y < size; y++)
     {
@@ -442,7 +442,7 @@ void blockfil_s_c(short *dst, intptr_t dstride, short val)
     }
 }
 
-void convert16to32_shl(int *dst, short *src, intptr_t stride, int shift, int size)
+void convert16to32_shl(int32_t *dst, int16_t *src, intptr_t stride, int shift, int size)
 {
     for (int i = 0; i < size; i++)
     {
@@ -453,7 +453,7 @@ void convert16to32_shl(int *dst, short *src, intptr_t stride, int shift, int siz
     }
 }
 
-void convert32to16_shr(short *dst, int *src, intptr_t stride, int shift, int size)
+void convert32to16_shr(int16_t *dst, int32_t *src, intptr_t stride, int shift, int size)
 {
     int round = 1 << (shift - 1);
 
@@ -461,7 +461,7 @@ void convert32to16_shr(short *dst, int *src, intptr_t stride, int shift, int siz
     {
         for (int j = 0; j < size; j++)
         {
-            dst[j] = (short)((src[j] + round) >> shift);
+            dst[j] = (int16_t)((src[j] + round) >> shift);
         }
         src += size;
         dst += stride;
@@ -469,13 +469,13 @@ void convert32to16_shr(short *dst, int *src, intptr_t stride, int shift, int siz
 }
 
 template<int blockSize>
-void getResidual(pixel *fenc, pixel *pred, short *residual, int stride)
+void getResidual(pixel *fenc, pixel *pred, int16_t *residual, int stride)
 {
     for (int uiY = 0; uiY < blockSize; uiY++)
     {
         for (int uiX = 0; uiX < blockSize; uiX++)
         {
-            residual[uiX] = static_cast<short>(fenc[uiX]) - static_cast<short>(pred[uiX]);
+            residual[uiX] = static_cast<int16_t>(fenc[uiX]) - static_cast<int16_t>(pred[uiX]);
         }
 
         fenc += stride;
@@ -485,14 +485,14 @@ void getResidual(pixel *fenc, pixel *pred, short *residual, int stride)
 }
 
 template<int blockSize>
-void calcRecons(pixel* pred, short* residual, pixel* recon, short* recqt, pixel* recipred, int stride, int qtstride, int ipredstride)
+void calcRecons(pixel* pred, int16_t* residual, pixel* recon, int16_t* recqt, pixel* recipred, int stride, int qtstride, int ipredstride)
 {
     for (int uiY = 0; uiY < blockSize; uiY++)
     {
         for (int uiX = 0; uiX < blockSize; uiX++)
         {
-            recon[uiX] = (pixel)ClipY(static_cast<short>(pred[uiX]) + residual[uiX]);
-            recqt[uiX] = (short)recon[uiX];
+            recon[uiX] = (pixel)ClipY(static_cast<int16_t>(pred[uiX]) + residual[uiX]);
+            recqt[uiX] = (int16_t)recon[uiX];
             recipred[uiX] = recon[uiX];
         }
 
@@ -542,7 +542,7 @@ void weightUnidirPix(pixel *src, pixel *dst, intptr_t srcStride, intptr_t dstStr
         for (x = 0; x <= width - 1; )
         {
             // simulating pixel to short conversion
-            short val = src[x] << (IF_INTERNAL_PREC - X265_DEPTH);
+            int16_t val = src[x] << (IF_INTERNAL_PREC - X265_DEPTH);
             dst[x] = (pixel) Clip3(0, ((1 << X265_DEPTH) - 1), ((w0 * (val) + round) >> shift) + offset);
             x++;
         }
@@ -552,13 +552,13 @@ void weightUnidirPix(pixel *src, pixel *dst, intptr_t srcStride, intptr_t dstStr
     }
 }
 
-void pixelsub_sp_c(int bx, int by, short *a, intptr_t dstride, pixel *b0, pixel *b1, intptr_t sstride0, intptr_t sstride1)
+void pixelsub_sp_c(int bx, int by, int16_t *a, intptr_t dstride, pixel *b0, pixel *b1, intptr_t sstride0, intptr_t sstride1)
 {
     for (int y = 0; y < by; y++)
     {
         for (int x = 0; x < bx; x++)
         {
-            a[x] = (short)(b0[x] - b1[x]);
+            a[x] = (int16_t)(b0[x] - b1[x]);
         }
 
         b0 += sstride0;
@@ -567,13 +567,13 @@ void pixelsub_sp_c(int bx, int by, short *a, intptr_t dstride, pixel *b0, pixel 
     }
 }
 
-void pixeladd_ss_c(int bx, int by, short *a, intptr_t dstride, short *b0, short *b1, intptr_t sstride0, intptr_t sstride1)
+void pixeladd_ss_c(int bx, int by, int16_t *a, intptr_t dstride, int16_t *b0, int16_t *b1, intptr_t sstride0, intptr_t sstride1)
 {
     for (int y = 0; y < by; y++)
     {
         for (int x = 0; x < bx; x++)
         {
-            a[x] = (short)ClipY(b0[x] + b1[x]);
+            a[x] = (int16_t)ClipY(b0[x] + b1[x]);
         }
 
         b0 += sstride0;
@@ -758,6 +758,21 @@ void plane_copy_deinterleave_chroma(pixel *dstu, intptr_t dstuStride, pixel *dst
         }
     }
 }
+
+template<int bx, int by>
+void blockcopy_pp_c(pixel *a, intptr_t stridea, pixel *b, intptr_t strideb)
+{
+    for (int y = 0; y < by; y++)
+    {
+        for (int x = 0; x < bx; x++)
+        {
+            a[x] = b[x];
+        }
+
+        a += stridea;
+        b += strideb;
+    }
+}
 }  // end anonymous namespace
 
 namespace x265 {
@@ -798,15 +813,46 @@ void Setup_C_PixelPrimitives(EncoderPrimitives &p)
     p.satd[LUMA_64x16] = satd8<64, 16>;
     p.satd[LUMA_16x64] = satd8<16, 64>;
 
+#define CHROMA(W, H) \
+    p.chroma_copy_pp[CHROMA_ ## W ## x ## H] = blockcopy_pp_c<W, H>
+#define LUMA(W, H) \
+    p.luma_copy_pp[LUMA_ ## W ## x ## H] = blockcopy_pp_c<W, H>
+
+    LUMA(4, 4);
+    LUMA(8, 8);   CHROMA(4, 4);
+    LUMA(4, 8);   CHROMA(2, 4);
+    LUMA(8, 4);   CHROMA(4, 2);
+    LUMA(16, 16); CHROMA(8, 8);
+    LUMA(16,  8); CHROMA(8, 4);
+    LUMA( 8, 16); CHROMA(4, 8);
+    LUMA(16, 12); CHROMA(8, 6);
+    LUMA(12, 16); CHROMA(6, 8);
+    LUMA(16,  4); CHROMA(8, 2);
+    LUMA( 4, 16); CHROMA(2, 8);
+    LUMA(32, 32); CHROMA(16, 16);
+    LUMA(32, 16); CHROMA(16, 8);
+    LUMA(16, 32); CHROMA(8, 16);
+    LUMA(32, 24); CHROMA(16, 12);
+    LUMA(24, 32); CHROMA(12, 16);
+    LUMA(32,  8); CHROMA(16, 4);
+    LUMA( 8, 32); CHROMA(4, 16);
+    LUMA(64, 64); CHROMA(32, 32);
+    LUMA(64, 32); CHROMA(32, 16);
+    LUMA(32, 64); CHROMA(16, 32);
+    LUMA(64, 48); CHROMA(32, 24);
+    LUMA(48, 64); CHROMA(24, 32);
+    LUMA(64, 16); CHROMA(32, 8);
+    LUMA(16, 64); CHROMA(8, 32);
+
     //sse
 #if HIGH_BIT_DEPTH
-    SET_FUNC_PRIMITIVE_TABLE_C(sse_pp, sse, pixelcmp_t, short, short)
-    SET_FUNC_PRIMITIVE_TABLE_C(sse_sp, sse, pixelcmp_sp_t, short, short)
-    SET_FUNC_PRIMITIVE_TABLE_C(sse_ss, sse, pixelcmp_ss_t, short, short)
+    SET_FUNC_PRIMITIVE_TABLE_C(sse_pp, sse, pixelcmp_t, int16_t, int16_t)
+    SET_FUNC_PRIMITIVE_TABLE_C(sse_sp, sse, pixelcmp_sp_t, int16_t, int16_t)
+    SET_FUNC_PRIMITIVE_TABLE_C(sse_ss, sse, pixelcmp_ss_t, int16_t, int16_t)
 #else
     SET_FUNC_PRIMITIVE_TABLE_C(sse_pp, sse, pixelcmp_t, pixel, pixel)
-    SET_FUNC_PRIMITIVE_TABLE_C(sse_sp, sse, pixelcmp_sp_t, short, pixel)
-    SET_FUNC_PRIMITIVE_TABLE_C(sse_ss, sse, pixelcmp_ss_t, short, short)
+    SET_FUNC_PRIMITIVE_TABLE_C(sse_sp, sse, pixelcmp_sp_t, int16_t, pixel)
+    SET_FUNC_PRIMITIVE_TABLE_C(sse_ss, sse, pixelcmp_ss_t, int16_t, int16_t)
 #endif
     p.blockcpy_pp = blockcopy_p_p;
     p.blockcpy_ps = blockcopy_p_s;
