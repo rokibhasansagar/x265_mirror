@@ -361,7 +361,7 @@ void TEncCu::compressCU(TComDataCU* cu)
         xCompressIntraCU(m_bestCU[0], m_tempCU[0], 0);
     else
     {
-        if (!m_cfg->param.bEnableRDO)
+        if (m_cfg->param.rdLevel < 5)
         {
             TComDataCU* outBestCU = NULL;
 

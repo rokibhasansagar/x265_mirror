@@ -33,6 +33,49 @@
 
 using namespace x265;
 
+// NOTE: I will remove below wrapper code after all of IntraAng mode finished
+extern "C" {
+#include "x86/intrapred.h"
+}
+intra_ang_t intra_ang4[NUM_INTRA_MODE - 1] =
+{
+    NULL,                               // Mode 0
+    NULL,                               // Mode 1
+    x265_intra_pred_ang4_2_ssse3,       // Mode 2
+    x265_intra_pred_ang4_3_ssse3,       // Mode 3
+    NULL,                               // Mode 4
+    NULL,                               // Mode 5
+    NULL,                               // Mode 6
+    NULL,                               // Mode 7
+    NULL,                               // Mode 8
+    NULL,                               // Mode 9
+    NULL,                               // Mode 10
+    NULL,                               // Mode 11
+    NULL,                               // Mode 12
+    NULL,                               // Mode 13
+    NULL,                               // Mode 14
+    NULL,                               // Mode 15
+    NULL,                               // Mode 16
+    NULL,                               // Mode 17
+    NULL,                               // Mode 18
+    NULL,                               // Mode 19
+    NULL,                               // Mode 20
+    NULL,                               // Mode 21
+    NULL,                               // Mode 22
+    NULL,                               // Mode 23
+    NULL,                               // Mode 24
+    NULL,                               // Mode 25
+    NULL,                               // Mode 26
+    NULL,                               // Mode 27
+    NULL,                               // Mode 28
+    NULL,                               // Mode 29
+    NULL,                               // Mode 30
+    NULL,                               // Mode 31
+    NULL,                               // Mode 32
+    x265_intra_pred_ang4_3_ssse3,       // Mode 33
+    x265_intra_pred_ang4_2_ssse3,       // Mode 34
+};
+
 namespace {
 #if !HIGH_BIT_DEPTH
 const int angAP[17][64] =
@@ -660,9 +703,17 @@ predIntraAng4x4_func predIntraAng4[] =
     predIntraAng4_32
 };
 
-void intraPredAng4x4(pixel* dst, int dstStride, int width, int dirMode, pixel *refLeft, pixel *refAbove, bool bFilter = true)
+
+void intraPredAng4x4(pixel* dst, intptr_t dstStride, pixel *refLeft, pixel *refAbove, int dirMode, int bFilter)
 {
     assert(dirMode > 1); //no planar and dc
+
+    if (intra_ang4[dirMode])
+    {
+        intra_ang4[dirMode](dst, dstStride, refLeft, refAbove, dirMode, bFilter);
+        return;
+    }
+
     static const int mode_to_angle_table[] = { 32, 26, 21, 17, 13, 9, 5, 2, 0, -2, -5, -9, -13, -17, -21, -26, -32, -26, -21, -17, -13, -9, -5, -2, 0, 2, 5, 9, 13, 17, 21, 26, 32 };
     static const int mode_to_invAng_table[] = { 256, 315, 390, 482, 630, 910, 1638, 4096, 0, 4096, 1638, 910, 630, 482, 390, 315, 256, 315, 390, 482, 630, 910, 1638, 4096, 0, 4096, 1638, 910, 630, 482, 390, 315, 256 };
     int intraPredAngle = mode_to_angle_table[dirMode - 2];
@@ -678,7 +729,7 @@ void intraPredAng4x4(pixel* dst, int dstStride, int width, int dirMode, pixel *r
     // Initialize the Main and Left reference array.
     if (intraPredAngle < 0)
     {
-        int blkSize = width;
+        int blkSize = 4;
         refMain = (modeVer ? refAbove : refLeft);     // + (blkSize - 1);
         refSide = (modeVer ? refLeft : refAbove);     // + (blkSize - 1);
 
@@ -1334,10 +1385,10 @@ predIntraAng8x8_func predIntraAng8[] =
     predIntraAng8_32
 };
 
-void intraPredAng8x8(pixel* dst, int dstStride, int width, int dirMode, pixel *refLeft, pixel *refAbove, bool bFilter = true)
+void intraPredAng8x8(pixel* dst, intptr_t dstStride, pixel *refLeft, pixel *refAbove, int dirMode, int bFilter)
 {
     int k;
-    int blkSize = width;
+    int blkSize = 8;
 
     assert(dirMode > 1); // not planar or dc
     static const int mode_to_angle_table[] = { 32, 26, 21, 17, 13, 9, 5, 2, 0, -2, -5, -9, -13, -17, -21, -26, -32, -26, -21, -17, -13, -9, -5, -2, 0, 2, 5, 9, 13, 17, 21, 26, 32 };
@@ -1560,10 +1611,10 @@ void intraPredAng8x8(pixel* dst, int dstStride, int width, int dirMode, pixel *r
     BLND2_4(R3, R7); \
     BLND2_4(R4, R8);
 
-void intraPredAng16x16(pixel* dst, int dstStride, int width, int dirMode, pixel *refLeft, pixel *refAbove, bool bFilter = true)
+void intraPredAng16x16(pixel* dst, intptr_t dstStride, pixel *refLeft, pixel *refAbove, int dirMode, int bFilter)
 {
     int k;
-    int blkSize        = width;
+    int blkSize        = 16;
 
     // Map the mode index to main prediction direction and angle
     assert(dirMode > 1); //no planar and dc
@@ -2153,10 +2204,10 @@ void intraPredAng16x16(pixel* dst, int dstStride, int width, int dirMode, pixel 
     PREDANG_CALCROW_HOR_MODE2(R6) \
     PREDANG_CALCROW_HOR_MODE2(R7) \
 
-void intraPredAng32x32(pixel* dst, int dstStride, int width, int dirMode, pixel *refLeft, pixel *refAbove)
+void intraPredAng32x32(pixel* dst, intptr_t dstStride, pixel *refLeft, pixel *refAbove, int dirMode, int)
 {
     int k;
-    int blkSize = width;
+    int blkSize = 32;
 
     // Map the mode index to main prediction direction and angle
     assert(dirMode > 1); //no planar and dc
@@ -3185,24 +3236,6 @@ void intraPredAng32x32(pixel* dst, int dstStride, int width, int dirMode, pixel 
 #undef MB4
 #undef CALC_BLND_8ROWS
 
-void intra_pred_ang(pixel* dst, int dstStride, int width, int dirMode, bool bFilter, pixel *refLeft, pixel *refAbove)
-{
-    switch (width)
-    {
-    case 4:
-        intraPredAng4x4(dst, dstStride, width, dirMode, refLeft, refAbove, bFilter);
-        return;
-    case 8:
-        intraPredAng8x8(dst, dstStride, width, dirMode, refLeft, refAbove, bFilter);
-        return;
-    case 16:
-        intraPredAng16x16(dst, dstStride, width, dirMode, refLeft, refAbove, bFilter);
-        return;
-    case 32:
-        intraPredAng32x32(dst, dstStride, width, dirMode, refLeft, refAbove);
-        return;
-    }
-}
 #endif // !HIGH_BIT_DEPTH
 }
 
@@ -3395,6 +3428,7 @@ void intra_pred_dc(pixel* above, pixel* left, pixel* dst, intptr_t dstStride, in
             dcValN.store(dst1 + 24);
             dst1 += dstStride;
         }
+
         break;
     }
 
@@ -3415,7 +3449,10 @@ void Setup_Vec_IPredPrimitives_ssse3(EncoderPrimitives& p)
     p.intra_pred_dc[BLOCK_16x16] = intra_pred_dc<16>;
     p.intra_pred_dc[BLOCK_32x32] = intra_pred_dc<32>;
 #else
-    p.intra_pred_ang = intra_pred_ang;
+    p.intra_pred_ang[BLOCK_4x4] = intraPredAng4x4;
+    p.intra_pred_ang[BLOCK_8x8] = intraPredAng8x8;
+    p.intra_pred_ang[BLOCK_16x16] = intraPredAng16x16;
+    p.intra_pred_ang[BLOCK_32x32] = intraPredAng32x32;
 #endif
 }
 }
