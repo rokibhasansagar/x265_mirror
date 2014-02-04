@@ -283,13 +283,13 @@ int Y4MInput::guessFrameCount()
     if (size < 0)
         return -1;
 
-    int frameSize = 0;
+    size_t frameSize = strlen(header) + 1;
     for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
     {
-        frameSize += (uint32_t)((width >> x265_cli_csps[colorSpace].width[i]) * (height >> x265_cli_csps[colorSpace].height[i]));
+        frameSize += (size_t)((width >> x265_cli_csps[colorSpace].width[i]) * (height >> x265_cli_csps[colorSpace].height[i]));
     }
 
-    return (int)((size - cur) / (frameSize + strlen(header) + 1));
+    return (int)((size - cur) / frameSize);
 }
 
 void Y4MInput::skipFrames(uint32_t numFrames)
@@ -297,43 +297,16 @@ void Y4MInput::skipFrames(uint32_t numFrames)
     if (ifs && numFrames)
     {
         size_t frameSize = strlen(header) + 1;
-
         for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+        {
             frameSize += (size_t)((width >> x265_cli_csps[colorSpace].width[i]) * (height >> x265_cli_csps[colorSpace].height[i]));
+        }
 
         for (uint32_t i = 0; i < numFrames; i++)
+        {
             ifs->ignore(frameSize);
+        }
     }
-}
-
-bool Y4MInput::readPicture(x265_picture& pic)
-{
-    PPAStartCpuEventFunc(read_yuv);
-#if ENABLE_THREADING
-    while (head == tail)
-    {
-        notEmpty.wait();
-        if (!threadActive)
-            return false;
-    }
-#else
-    populateFrameQueue();
-#endif
-
-    if (!frameStat[head])
-        return false;
-
-    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
-    {
-        pic.planes[i] = plane[head][i];
-        pic.stride[i] = plane_stride[i];
-    }
-
-    head = (head + 1) % QUEUE_SIZE;
-    notFull.trigger();
-
-    PPAStopCpuEventFunc(read_yuv);
-    return true;
 }
 
 void Y4MInput::startReader()
@@ -355,6 +328,37 @@ void Y4MInput::threadMain()
 
     threadActive = false;
     notEmpty.trigger();
+}
+
+bool Y4MInput::readPicture(x265_picture& pic)
+{
+    PPAStartCpuEventFunc(read_yuv);
+#if ENABLE_THREADING
+    while (head == tail)
+    {
+        notEmpty.wait();
+        if (!threadActive)
+            return false;
+    }
+
+#else
+    populateFrameQueue();
+#endif
+
+    if (!frameStat[head])
+        return false;
+
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+    {
+        pic.planes[i] = plane[head][i];
+        pic.stride[i] = plane_stride[i];
+    }
+
+    head = (head + 1) % QUEUE_SIZE;
+    notFull.trigger();
+
+    PPAStopCpuEventFunc(read_yuv);
+    return true;
 }
 
 bool Y4MInput::populateFrameQueue()

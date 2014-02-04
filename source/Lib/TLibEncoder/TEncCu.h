@@ -131,6 +131,7 @@ private:
     bool         m_abortFlag; // aborts recursion when the child CU costs more than parent CU
 
 public:
+
 #if LOG_CU_STATISTICS
     StatisticLog  m_sliceTypeLog[3];
     StatisticLog* m_log;
@@ -180,7 +181,6 @@ protected:
     void xCheckDQP(TComDataCU* cu);
 
     void xCheckIntraPCM(TComDataCU*& outBestCU, TComDataCU*& outTempCU);
-    void xCopyAMVPInfo(AMVPInfo* src, AMVPInfo* dst);
     void xCopyYuv2Pic(TComPic* outPic, uint32_t cuAddr, uint32_t absPartIdx, uint32_t depth, uint32_t uiSrcDepth, TComDataCU* cu,
                       uint32_t lpelx, uint32_t tpely);
     void xCopyYuv2Tmp(uint32_t uhPartUnitIdx, uint32_t depth);

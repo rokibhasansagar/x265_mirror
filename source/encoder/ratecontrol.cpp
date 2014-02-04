@@ -108,22 +108,27 @@ void RateControl::calcAdaptiveQuantFrame(TComPic *pic)
         int cuHeight = ((maxRow / 2) + X265_LOWRES_CU_SIZE - 1) >> X265_LOWRES_CU_BITS;
         int cuCount = cuWidth * cuHeight;
 
-        if(cfg->param.rc.aqMode && cfg->param.rc.aqStrength == 0 )
+        if (cfg->param.rc.aqMode && cfg->param.rc.aqStrength == 0)
         {
             memset(pic->m_lowres.qpOffset, 0, cuCount * sizeof(double));
             memset(pic->m_lowres.qpAqOffset, 0, cuCount * sizeof(double));
-            for (int cuxy = 0; cuxy < cuCount; cuxy++ )
+            for (int cuxy = 0; cuxy < cuCount; cuxy++)
+            {
                 pic->m_lowres.invQscaleFactor[cuxy] = 256;
+            }
         }
 
-         /* Need variance data for weighted prediction */
+        /* Need variance data for weighted prediction */
         if (cfg->param.bEnableWeightedPred)
         {
             for (block_y = 0; block_y < maxRow; block_y += 16)
+            {
                 for (block_x = 0; block_x < maxCol; block_x += 16)
+                {
                     acEnergyCu(pic, block_x, block_y);
+                }
+            }
         }
-
     }
     else
     {
@@ -131,19 +136,20 @@ void RateControl::calcAdaptiveQuantFrame(TComPic *pic)
         double avg_adj_pow2 = 0, avg_adj = 0, qp_adj = 0;
         if (cfg->param.rc.aqMode == X265_AQ_AUTO_VARIANCE)
         {
-            double bit_depth_correction = pow (1 << (g_bitDepth - 8), 0.5);
+            double bit_depth_correction = pow(1 << (X265_DEPTH - 8), 0.5);
             for (block_y = 0; block_y < maxRow; block_y += 16)
             {
                 for (block_x = 0; block_x < maxCol; block_x += 16)
                 {
                     uint32_t energy = acEnergyCu(pic, block_x, block_y);
-                    qp_adj = pow (energy + 1, 0.125);
+                    qp_adj = pow(energy + 1, 0.125);
                     pic->m_lowres.qpOffset[block_xy] = qp_adj;
                     avg_adj += qp_adj;
                     avg_adj_pow2 += qp_adj * qp_adj;
                     block_xy++;
                 }
             }
+
             avg_adj /= ncu;
             avg_adj_pow2 /= ncu;
             strength = cfg->param.rc.aqStrength * avg_adj / bit_depth_correction;
@@ -151,27 +157,28 @@ void RateControl::calcAdaptiveQuantFrame(TComPic *pic)
         }
         else
             strength = cfg->param.rc.aqStrength * 1.0397f;
-            block_xy = 0; 
-            for (block_y = 0; block_y < maxRow; block_y += 16)
+
+        block_xy = 0;
+        for (block_y = 0; block_y < maxRow; block_y += 16)
+        {
+            for (block_x = 0; block_x < maxCol; block_x += 16)
             {
-                for (block_x = 0; block_x < maxCol; block_x += 16)
+                if (cfg->param.rc.aqMode == X265_AQ_AUTO_VARIANCE)
                 {
-                    if(cfg->param.rc.aqMode == X265_AQ_AUTO_VARIANCE)
-                    {
-                        qp_adj =pic->m_lowres.qpOffset[block_xy];
-                        qp_adj = strength * (qp_adj - avg_adj);
-                    }
-                    else
-                    {
-                        uint32_t energy = acEnergyCu(pic, block_x, block_y);
-                        qp_adj = strength * (X265_LOG2(X265_MAX(energy, 1)) - (14.427f + 2*(g_bitDepth-8)));
-                    }
-                    pic->m_lowres.qpAqOffset[block_xy] = qp_adj;
-                    pic->m_lowres.qpOffset[block_xy] = qp_adj;
-                    pic->m_lowres.invQscaleFactor[block_xy] = x265_exp2fix8(qp_adj);
-                    block_xy++;
+                    qp_adj = pic->m_lowres.qpOffset[block_xy];
+                    qp_adj = strength * (qp_adj - avg_adj);
                 }
+                else
+                {
+                    uint32_t energy = acEnergyCu(pic, block_x, block_y);
+                    qp_adj = strength * (X265_LOG2(X265_MAX(energy, 1)) - (14.427f + 2 * (X265_DEPTH - 8)));
+                }
+                pic->m_lowres.qpAqOffset[block_xy] = qp_adj;
+                pic->m_lowres.qpOffset[block_xy] = qp_adj;
+                pic->m_lowres.invQscaleFactor[block_xy] = x265_exp2fix8(qp_adj);
+                block_xy++;
             }
+        }
     }
 
     if (cfg->param.bEnableWeightedPred)
@@ -517,7 +524,7 @@ double RateControl::rateEstimateQscale(RateControlEntry *rce)
 
             q = Clip3(lqmin, lqmax, q);
         }
-        else 
+        else
         {
             if (qCompress != 1 && framesDone == 0)
                 q = qp2qScale(ABR_INIT_QP) / fabs(cfg->param.rc.ipFactor);
@@ -632,7 +639,7 @@ double RateControl::getQScale(RateControlEntry *rce, double rateFactor)
 
     if (cfg->param.rc.cuTree)
     {
-        // Scale and units are obtained from rateNum and rateDenom for videos with fixed frame rates. 
+        // Scale and units are obtained from rateNum and rateDenom for videos with fixed frame rates.
         double scale = cfg->param.frameRate * 2;
         double numTicks = 1;
         double timescale = numTicks / scale;

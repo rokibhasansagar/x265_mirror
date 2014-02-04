@@ -5,6 +5,10 @@ if(NOT CMAKE_BUILD_TYPE)
         "Choose the type of build, options are: None(CMAKE_CXX_FLAGS or CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel."
         FORCE)
 endif()
+message(STATUS "cmake version ${CMAKE_VERSION}")
+if(NOT CMAKE_VERSION VERSION_LESS "2.8.12.20131121")
+    cmake_policy(SET CMP0025 OLD) # report Apple's Clang as just Clang
+endif()
 
 project (x265)
 cmake_minimum_required (VERSION 2.8.8) # OBJECT libraries require 2.8.8
@@ -13,7 +17,7 @@ include(CheckFunctionExists)
 include(CheckCXXCompilerFlag)
 
 # X265_BUILD must be incremented each time the public API is changed
-set(X265_BUILD 4)
+set(X265_BUILD 5)
 configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
                "${PROJECT_BINARY_DIR}/x265.def")
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
@@ -21,12 +25,36 @@ configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
 
-if ("${CMAKE_SIZEOF_VOID_P}" MATCHES 8)
-    set(X64 1)
-    add_definitions(-DX86_64=1)
+# System architecture detection
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" SYSPROC)
+if("${SYSPROC}" STREQUAL "i386"   OR "${SYSPROC}" STREQUAL "amd64" OR
+   "${SYSPROC}" STREQUAL "x86_64" OR "${SYSPROC}" STREQUAL "x86"   OR
+   "${SYSPROC}" STREQUAL "")
+    message(STATUS "Detected x86 system processor")
+    set(X86 1)
+    add_definitions(-DX265_ARCH_X86=1)
+    if("${CMAKE_SIZEOF_VOID_P}" MATCHES 8)
+        set(X64 1)
+        add_definitions(-DX86_64=1)
+    endif()
+elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm")
+    message(STATUS "Detected ARM system processor")
+    set(ARM 1)
+    add_definitions(-DX265_ARCH_ARM=1)
+else()
+    message(STATUS "CMAKE_SYSTEM_PROCESSOR value `${CMAKE_SYSTEM_PROCESSOR}` is unknown")
+    message(STATUS "Please add this value near ${CMAKE_CURRENT_LIST_FILE}:${CMAKE_CURRENT_LIST_LINE}")
 endif()
 
-if (CMAKE_GENERATOR STREQUAL "Xcode")
+if(UNIX)
+    SET(PLATFORM_LIBS pthread)
+    if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        SET(PLATFORM_LIBS ${PLATFORM_LIBS} rt)
+    endif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+endif(UNIX)
+
+# Compiler detection
+if(CMAKE_GENERATOR STREQUAL "Xcode")
   set(XCODE 1)
 endif()
 if (APPLE)
@@ -92,8 +120,23 @@ if (GCC)
     if(X64 AND NOT WIN32)
         add_definitions(-fPIC)
     endif(X64 AND NOT WIN32)
+    if(X86 AND NOT X64)
+        add_definitions(-march=i686)
+    endif()
 endif(GCC)
 
+find_package(Yasm)
+if(YASM_FOUND AND X86)
+    if (YASM_VERSION_STRING VERSION_LESS "1.2.0")
+        message(STATUS "Yasm version ${YASM_VERSION_STRING} is too old. 1.2.0 or later required")
+        option(ENABLE_ASSEMBLY "Enable use of assembly coded primitives" OFF)
+    else()
+        message(STATUS "Found Yasm ${YASM_VERSION_STRING} to build assembly primitives")
+        option(ENABLE_ASSEMBLY "Enable use of assembly coded primitives" ON)
+    endif()
+endif()
+
+# Build options
 option(HIGH_BIT_DEPTH "Use 16bit pixels internally" OFF)
 if(HIGH_BIT_DEPTH)
     add_definitions(-DHIGH_BIT_DEPTH=1)
@@ -107,24 +150,6 @@ if(LOG_CU_STATISTICS)
 else(LOG_CU_STATISTICS)
     add_definitions(-DLOG_CU_STATISTICS=0)
 endif(LOG_CU_STATISTICS)
-
-find_package(Yasm)
-if(YASM_FOUND)
-    if (YASM_VERSION_STRING VERSION_LESS "1.2.0")
-        message(STATUS "Yasm version ${YASM_VERSION_STRING} is too old. 1.2.0 or later required")
-        option(ENABLE_ASSEMBLY "Enable use of assembly coded primitives" OFF)
-    else()
-        message(STATUS "Found Yasm ${YASM_VERSION_STRING} to build assembly primitives")
-        option(ENABLE_ASSEMBLY "Enable use of assembly coded primitives" ON)
-    endif()
-endif(YASM_FOUND)
-
-if(UNIX)
-    SET(PLATFORM_LIBS pthread)
-    if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-        SET(PLATFORM_LIBS ${PLATFORM_LIBS} rt)
-    endif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-endif(UNIX)
 
 option(ENABLE_PPA "Enable PPA profiling instrumentation" OFF)
 if(ENABLE_PPA)
@@ -154,8 +179,8 @@ endif()
 
 include(version) # determine X265_VERSION and X265_LATEST_TAG
 include_directories(. Lib common encoder "${PROJECT_BINARY_DIR}")
-add_subdirectory(common)
 add_subdirectory(encoder)
+add_subdirectory(common)
 
 if((MSVC_IDE OR XCODE) AND ENABLE_ASSEMBLY)
     # this is horrible. ugly, and hacky, and it reproduces logic found

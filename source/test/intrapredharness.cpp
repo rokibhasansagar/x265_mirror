@@ -47,8 +47,8 @@ IntraPredHarness::IntraPredHarness()
 
     pixel_out_c   = (pixel*)malloc(out_size * sizeof(pixel));
     pixel_out_vec = (pixel*)malloc(out_size * sizeof(pixel));
-    pixel_out_33_c   = (pixel*)X265_MALLOC(pixel, out_size_33);
-    pixel_out_33_vec = (pixel*)X265_MALLOC(pixel, out_size_33);
+    pixel_out_33_c   = X265_MALLOC(pixel, out_size_33);
+    pixel_out_33_vec = X265_MALLOC(pixel, out_size_33);
 
     if (!pixel_out_c || !pixel_out_vec)
     {
@@ -188,7 +188,7 @@ bool IntraPredHarness::check_angular_primitive(const intra_pred_t ref[][NUM_INTR
                         opt[size - 2][pmode](pixel_out_vec, FENC_STRIDE, refLeft, refAbove, pmode, bFilter);
                         printf("\nFailed for width %d mode %d bfilter %d row %d \t", width, p, bFilter, k);
 #if HIGH_BIT_DEPTH
-    X265_DEPTH = old_depth;
+                        X265_DEPTH = old_depth;
 #endif
                         return false;
                     }
@@ -198,6 +198,7 @@ bool IntraPredHarness::check_angular_primitive(const intra_pred_t ref[][NUM_INTR
             j += FENC_STRIDE;
         }
     }
+
 #if HIGH_BIT_DEPTH
     X265_DEPTH = old_depth;
 #endif

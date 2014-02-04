@@ -31,7 +31,8 @@
 #include "frameencoder.h"
 #include "cturow.h"
 #include "common.h"
-
+#include "slicetype.h"
+#include "weightPrediction.h"
 #include <math.h>
 
 using namespace x265;
@@ -269,6 +270,7 @@ void FrameEncoder::initSlice(TComPic* pic)
     {
         m_rows[i].m_cuCoder.m_log = &m_rows[i].m_cuCoder.m_sliceTypeLog[sliceType];
     }
+
 #endif
     if (slice->getPPS()->getDeblockingFilterControlPresentFlag())
     {
@@ -330,11 +332,11 @@ void FrameEncoder::setLambda(int qp, int row)
     // in RdCost there is only one lambda because the luma and chroma bits are not separated,
     // instead we weight the distortion of chroma.
     int chromaQPOffset = slice->getPPS()->getChromaCbQpOffset() + slice->getSliceQpDeltaCb();
-    int qpc = Clip3(0, 70, qp + chromaQPOffset);
+    int qpc = Clip3(0, MAX_MAX_QP, qp + chromaQPOffset);
     double cbWeight = pow(2.0, (qp - g_chromaScale[qpc])); // takes into account of the chroma qp mapping and chroma qp Offset
 
     chromaQPOffset = slice->getPPS()->getChromaCrQpOffset() + slice->getSliceQpDeltaCr();
-    qpc = Clip3(0, 70, qp + chromaQPOffset);
+    qpc = Clip3(0, MAX_MAX_QP, qp + chromaQPOffset);
     double crWeight = pow(2.0, (qp - g_chromaScale[qpc])); // takes into account of the chroma qp mapping and chroma qp Offset
     double chromaLambda = lambda / crWeight;
 
@@ -369,10 +371,10 @@ void FrameEncoder::compressFrame()
     // instead we weight the distortion of chroma.
     int qpc;
     int chromaQPOffset = slice->getPPS()->getChromaCbQpOffset() + slice->getSliceQpDeltaCb();
-    qpc = Clip3(0, 70, qp + chromaQPOffset);
+    qpc = Clip3(0, MAX_MAX_QP, qp + chromaQPOffset);
     double cbWeight = pow(2.0, (qp - g_chromaScale[qpc])); // takes into account of the chroma qp mapping and chroma qp Offset
     chromaQPOffset = slice->getPPS()->getChromaCrQpOffset() + slice->getSliceQpDeltaCr();
-    qpc = Clip3(0, 70, qp + chromaQPOffset);
+    qpc = Clip3(0, MAX_MAX_QP, qp + chromaQPOffset);
     double crWeight = pow(2.0, (qp - g_chromaScale[qpc])); // takes into account of the chroma qp mapping and chroma qp Offset
     double chromaLambda = lambda / crWeight;
 
@@ -392,7 +394,7 @@ void FrameEncoder::compressFrame()
 
     m_frameFilter.m_sao.lumaLambda = lambda;
     m_frameFilter.m_sao.chromaLambda = chromaLambda;
-    
+
     switch (slice->getSliceType())
     {
     case I_SLICE:
@@ -405,8 +407,9 @@ void FrameEncoder::compressFrame()
         m_frameFilter.m_sao.depth = 2 + !slice->isReferenced();
         break;
     }
+
     /* Clip qps back to 0-51 range before encoding */
-    if(qp > MAX_QP)
+    if (qp > MAX_QP)
     {
         qp = MAX_QP;
         slice->setSliceQp(qp);
@@ -463,11 +466,8 @@ void FrameEncoder::compressFrame()
         //------------------------------------------------------------------------------
         //  Weighted Prediction implemented at Slice level. SliceMode=2 is not supported yet.
         //------------------------------------------------------------------------------
-        m_wp.xEstimateWPParamSlice(slice);
-        slice->initWpScaling();
-
-        // check WP on/off
-        m_wp.xCheckWPEnable(slice);
+        WeightPrediction wp(slice, m_cfg->param);
+        wp.weightAnalyseEnc();
     }
 
     // Generate motion references
@@ -477,7 +477,7 @@ void FrameEncoder::compressFrame()
         for (int ref = 0; ref < slice->getNumRefIdx(l); ref++)
         {
             wpScalingParam *w = NULL;
-            if ((slice->isInterP() && slice->getPPS()->getUseWP() && slice->m_weightPredTable[l][ref]->bPresentFlag))
+            if ((slice->isInterP() && slice->getPPS()->getUseWP() && slice->m_weightPredTable[l][ref][0].bPresentFlag))
             {
                 w = slice->m_weightPredTable[l][ref];
                 slice->m_numWPRefs++;
@@ -509,7 +509,7 @@ void FrameEncoder::compressFrame()
 
             m_seiWriter.writeSEImessage(nalu.m_bitstream, seiGradualDecodingRefreshInfo, slice->getSPS());
             writeRBSPTrailingBits(nalu.m_bitstream);
-            m_nalList[m_nalCount] = (NALUnitEBSP*)X265_MALLOC(NALUnitEBSP, 1);
+            m_nalList[m_nalCount] = X265_MALLOC(NALUnitEBSP, 1);
             if (m_nalList[m_nalCount])
             {
                 m_nalList[m_nalCount]->init(nalu);
@@ -526,7 +526,7 @@ void FrameEncoder::compressFrame()
 
         m_seiWriter.writeSEImessage(nalu.m_bitstream, sei_recovery_point, slice->getSPS());
         writeRBSPTrailingBits(nalu.m_bitstream);
-        m_nalList[m_nalCount] = (NALUnitEBSP*)X265_MALLOC(NALUnitEBSP, 1);
+        m_nalList[m_nalCount] = X265_MALLOC(NALUnitEBSP, 1);
         if (m_nalList[m_nalCount])
         {
             m_nalList[m_nalCount]->init(nalu);
@@ -671,7 +671,7 @@ void FrameEncoder::compressFrame()
     }
     entropyCoder->setBitstream(&nalu.m_bitstream);
     bitstreamRedirect->clear();
-    m_nalList[m_nalCount] = (NALUnitEBSP*)X265_MALLOC(NALUnitEBSP, 1);
+    m_nalList[m_nalCount] = X265_MALLOC(NALUnitEBSP, 1);
     if (m_nalList[m_nalCount])
     {
         m_nalList[m_nalCount]->init(nalu);
@@ -709,7 +709,7 @@ void FrameEncoder::compressFrame()
         m_seiWriter.writeSEImessage(onalu.m_bitstream, m_seiReconPictureDigest, slice->getSPS());
         writeRBSPTrailingBits(onalu.m_bitstream);
 
-        m_nalList[m_nalCount] = (NALUnitEBSP*)X265_MALLOC(NALUnitEBSP, 1);
+        m_nalList[m_nalCount] = X265_MALLOC(NALUnitEBSP, 1);
         if (m_nalList[m_nalCount])
         {
             m_nalList[m_nalCount]->init(onalu);
@@ -978,6 +978,7 @@ void FrameEncoder::compressCTURows()
                     {
                         m_reconRowWait.wait();
                     }
+
                     m_blockRefPOC = -1;
 
                     if (slice->getPPS()->getUseWP() && slice->getSliceType() == P_SLICE && m_mref[l][ref].isWeighted)
@@ -1021,6 +1022,7 @@ void FrameEncoder::compressCTURows()
                         {
                             m_reconRowWait.wait();
                         }
+
                         m_blockRefPOC = -1;
 
                         if (slice->getPPS()->getUseWP() && slice->getSliceType() == P_SLICE && m_mref[l][ref].isWeighted)
@@ -1084,7 +1086,6 @@ void FrameEncoder::processRowEncoder(int row)
             if (qp > MAX_QP)
                 qp = MAX_QP;
             cu->setQP(0, (char)qp);
-
         }
         codeRow.processCU(cu, m_pic->getSlice(), bufSbac, m_cfg->param.bEnableWavefront && col == 1);
 

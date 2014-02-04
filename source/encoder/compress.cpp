@@ -88,8 +88,6 @@ void TEncCu::xComputeCostIntraInInter(TComDataCU* cu, PartSize partSize)
     uint32_t width       = cu->getWidth(0) >> initTrDepth;
     uint32_t partOffset  = 0;
 
-    //===== init pattern for luma prediction =====
-    cu->getPattern()->initPattern(cu, initTrDepth, partOffset);
     // Reference sample smoothing
     cu->getPattern()->initAdiPattern(cu, partOffset, initTrDepth, m_search->getPredicBuf(), m_search->getPredicBufWidth(),
                                      m_search->getPredicBufHeight(), m_search->refAbove, m_search->refLeft,
@@ -230,15 +228,11 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
     outTempCU->setCUTransquantBypassSubParts(m_cfg->getCUTransquantBypassFlagValue(), 0, depth);
     outTempCU->getInterMergeCandidates(0, 0, mvFieldNeighbours, interDirNeighbours, numValidMergeCand);
     outTempCU->setPredModeSubParts(MODE_INTER, 0, depth);
-    outTempCU->setCUTransquantBypassSubParts(m_cfg->getCUTransquantBypassFlagValue(), 0, depth);
-    outTempCU->setPartSizeSubParts(SIZE_2Nx2N, 0, depth);
     outTempCU->setMergeFlagSubParts(true, 0, 0, depth);
 
     outBestCU->setPartSizeSubParts(SIZE_2Nx2N, 0, depth); // interprets depth relative to LCU level
     outBestCU->setCUTransquantBypassSubParts(m_cfg->getCUTransquantBypassFlagValue(), 0, depth);
     outBestCU->setPredModeSubParts(MODE_INTER, 0, depth);
-    outBestCU->setCUTransquantBypassSubParts(m_cfg->getCUTransquantBypassFlagValue(), 0, depth);
-    outBestCU->setPartSizeSubParts(SIZE_2Nx2N, 0, depth);
     outBestCU->setMergeFlagSubParts(true, 0, 0, depth);
 
     int part = g_convertToBit[outTempCU->getWidth(0)];
@@ -248,8 +242,8 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
     for (int mergeCand = 0; mergeCand < numValidMergeCand; ++mergeCand)
     {
         /* TODO: check only necessary when -F>1, and ref pixels available is in units of LCU rows */
-        if ( mvFieldNeighbours[0 + 2 * mergeCand].mv.y < (m_cfg->param.searchRange+1) * 4
-          && mvFieldNeighbours[1 + 2 * mergeCand].mv.y < (m_cfg->param.searchRange+1) * 4)
+        if (mvFieldNeighbours[0 + 2 * mergeCand].mv.y < (m_cfg->param.searchRange + 1) * 4
+            && mvFieldNeighbours[1 + 2 * mergeCand].mv.y < (m_cfg->param.searchRange + 1) * 4)
         {
             // set MC parameters, interprets depth relative to LCU level
             outTempCU->setMergeIndexSubParts(mergeCand, 0, 0, depth);
@@ -282,7 +276,7 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
             }
         }
     }
-    
+
     if (bestMergeCand < 0)
     {
         outBestCU->setMergeFlagSubParts(false, 0, 0, depth);
@@ -357,7 +351,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
     bool bInsidePicture = (rpelx < outTempCU->getSlice()->getSPS()->getPicWidthInLumaSamples()) &&
         (bpely < outTempCU->getSlice()->getSPS()->getPicHeightInLumaSamples());
 
-    if(depth == 0 && m_cfg->param.rdLevel == 0)
+    if (depth == 0 && m_cfg->param.rdLevel == 0)
     {
         m_origYuv[depth]->copyToPicYuv(cu->getPic()->getPicYuvRec(), cu->getAddr(), 0);
     }
@@ -705,7 +699,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
                 outBestCU->copyToPic((UChar)depth);
 
                 /* Copy Yuv data to picture Yuv */
-                if(m_cfg->param.rdLevel != 0)
+                if (m_cfg->param.rdLevel != 0)
                     xCopyYuv2Pic(outBestCU->getPic(), outBestCU->getAddr(), outBestCU->getZorderIdxInCU(), depth, depth, outBestCU, lpelx, tpely);
                 return;
             }
@@ -744,7 +738,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
 #endif // if EARLY_EXIT
                 /* Adding costs from best SUbCUs */
                 outTempCU->copyPartFrom(subBestPartCU, nextDepth_partIndex, nextDepth, true); // Keep best part data to current temporary data.
-                if(m_cfg->param.rdLevel != 0)
+                if (m_cfg->param.rdLevel != 0)
                     xCopyYuv2Tmp(subBestPartCU->getTotalNumPart() * nextDepth_partIndex, nextDepth);
                 if (m_cfg->param.rdLevel == 0)
                     m_bestPredYuv[nextDepth]->copyToPartYuv(m_tmpPredYuv[depth], subBestPartCU->getTotalNumPart() * nextDepth_partIndex);
@@ -842,7 +836,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
     {
         encodeResidue(outBestCU, outBestCU, 0, 0);
     }
-    else if(m_cfg->param.rdLevel != 0)
+    else if (m_cfg->param.rdLevel != 0)
     {
         /* Copy Yuv data to picture Yuv */
         xCopyYuv2Pic(outBestCU->getPic(), outBestCU->getAddr(), outBestCU->getZorderIdxInCU(), depth, depth, outBestCU, lpelx, tpely);

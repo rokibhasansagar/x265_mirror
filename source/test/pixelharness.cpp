@@ -41,16 +41,16 @@ PixelHarness::PixelHarness()
     int bufsize = STRIDE * (maxheight + padrows) + INCR * ITERS;
 
     /* 64 pixels wide, 2k deep */
-    pbuf1 = (pixel*)X265_MALLOC(pixel, bufsize);
-    pbuf2 = (pixel*)X265_MALLOC(pixel, bufsize);
-    pbuf3 = (pixel*)X265_MALLOC(pixel, bufsize);
-    pbuf4 = (pixel*)X265_MALLOC(pixel, bufsize);
+    pbuf1 = X265_MALLOC(pixel, bufsize);
+    pbuf2 = X265_MALLOC(pixel, bufsize);
+    pbuf3 = X265_MALLOC(pixel, bufsize);
+    pbuf4 = X265_MALLOC(pixel, bufsize);
 
-    ibuf1 = (int*)X265_MALLOC(int, bufsize);
+    ibuf1 = X265_MALLOC(int, bufsize);
 
-    sbuf1 = (int16_t*)X265_MALLOC(int16_t, bufsize);
-    sbuf2 = (int16_t*)X265_MALLOC(int16_t, bufsize);
-    sbuf3 = (int16_t*)X265_MALLOC(int16_t, bufsize);
+    sbuf1 = X265_MALLOC(int16_t, bufsize);
+    sbuf2 = X265_MALLOC(int16_t, bufsize);
+    sbuf3 = X265_MALLOC(int16_t, bufsize);
 
     if (!pbuf1 || !pbuf2 || !pbuf3 || !pbuf4 || !sbuf1 || !sbuf2 || !sbuf3 || !ibuf1)
     {
@@ -295,8 +295,9 @@ bool PixelHarness::check_calcrecon(calcrecon_t ref, calcrecon_t opt)
 
         j += INCR;
     }
+
 #if HIGH_BIT_DEPTH
-        X265_DEPTH = old_depth;
+    X265_DEPTH = old_depth;
 #endif
     return true;
 }
@@ -366,8 +367,8 @@ bool PixelHarness::check_pixeladd_ss(pixeladd_ss_t ref, pixeladd_ss_t opt)
     int j = 0;
     for (int i = 0; i < ITERS; i++)
     {
-        opt(bx, by, opt_dest, STRIDE, (int16_t*)pbuf2 + j, (int16_t*)pbuf1 + j, STRIDE, STRIDE);
-        ref(bx, by, ref_dest, STRIDE, (int16_t*)pbuf2 + j, (int16_t*)pbuf1 + j, STRIDE, STRIDE);
+        opt(bx, by, opt_dest, STRIDE, sbuf2 + j, sbuf1 + j, STRIDE, STRIDE);
+        ref(bx, by, ref_dest, STRIDE, sbuf2 + j, sbuf1 + j, STRIDE, STRIDE);
 
         if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(int16_t)))
             return false;
@@ -763,6 +764,30 @@ bool PixelHarness::check_ssim_end(ssim_end4_t ref, ssim_end4_t opt)
     return true;
 }
 
+bool PixelHarness::check_addAvg(addAvg_t ref, addAvg_t opt)
+{
+    ALIGN_VAR_16(pixel, ref_dest[64 * 64]);
+    ALIGN_VAR_16(pixel, opt_dest[64 * 64]);
+
+    int j = 0;
+
+    memset(ref_dest, 0xCD, sizeof(ref_dest));
+    memset(opt_dest, 0xCD, sizeof(opt_dest));
+
+    for (int i = 0; i < ITERS; i++)
+    {
+        ref(sbuf1 + j, sbuf2 + j, ref_dest, STRIDE, STRIDE, STRIDE);
+        opt(sbuf1 + j, sbuf2 + j, opt_dest, STRIDE, STRIDE, STRIDE);
+
+        if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(pixel)))
+            return false;
+
+        j += INCR;
+    }
+
+    return true;
+}
+
 bool PixelHarness::testPartition(int part, const EncoderPrimitives& ref, const EncoderPrimitives& opt)
 {
     if (opt.satd[part])
@@ -932,6 +957,23 @@ bool PixelHarness::testPartition(int part, const EncoderPrimitives& ref, const E
                 printf("chroma_add_ps[%s][%s] failed\n", x265_source_csp_names[i], chromaPartStr[part]);
                 return false;
             }
+        }
+        if (opt.chroma[i].addAvg[part])
+        {
+            if (!check_addAvg(ref.chroma[i].addAvg[part], opt.chroma[i].addAvg[part]))
+            {
+                printf("chroma_add_ps[%s][%s] failed\n", x265_source_csp_names[i], chromaPartStr[part]);
+                return false;
+            }
+        }
+    }
+
+    if (opt.luma_addAvg[part])
+    {
+        if (!check_addAvg(ref.luma_addAvg[part], opt.luma_addAvg[part]))
+        {
+            printf("luma_addAvg[%s] failed\n", lumaPartStr[part]);
+            return false;
         }
     }
 
@@ -1256,6 +1298,17 @@ void PixelHarness::measurePartition(int part, const EncoderPrimitives& ref, cons
             HEADER("[%s]  add_ps[%s]", x265_source_csp_names[i], chromaPartStr[part]);
             REPORT_SPEEDUP(opt.chroma[i].add_ps[part], ref.chroma[i].add_ps[part], pbuf1, FENC_STRIDE, pbuf2, sbuf1, STRIDE, STRIDE);
         }
+        if (opt.chroma[i].addAvg[part])
+        {
+            HEADER("[%s]  add_ps[%s]", x265_source_csp_names[i], chromaPartStr[part]);
+            REPORT_SPEEDUP(opt.chroma[i].addAvg[part], ref.chroma[i].addAvg[part], sbuf1, sbuf2, pbuf1, STRIDE, STRIDE, STRIDE);
+        }
+    }
+
+    if (opt.luma_addAvg[part])
+    {
+        printf("luma_addAvg[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.luma_addAvg[part], ref.luma_addAvg[part], sbuf1, sbuf2, pbuf1, STRIDE, STRIDE, STRIDE);
     }
 
 #undef HEADER
@@ -1311,13 +1364,13 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         if (opt.calcrecon[i])
         {
 #if HIGH_BIT_DEPTH
-        int old_depth = X265_DEPTH;
-        X265_DEPTH = 10;
+            int old_depth = X265_DEPTH;
+            X265_DEPTH = 10;
 #endif
             HEADER("recon[%dx%d]", 4 << i, 4 << i);
             REPORT_SPEEDUP(opt.calcrecon[i], ref.calcrecon[i], pbuf1, sbuf1, pbuf2, sbuf1, pbuf1, 64, 64, 64);
 #if HIGH_BIT_DEPTH
-        X265_DEPTH = old_depth;
+            X265_DEPTH = old_depth;
 #endif
         }
 

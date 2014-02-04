@@ -1,16 +1,4 @@
 # vim: syntax=cmake
-if(GCC)
-    # encoder.cpp must include HM headers which are not careful about named parameters
-    set_source_files_properties(encoder.cpp PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
-endif(GCC)
-
-if(GCC)
-    if (NOT X64)
-        # force gcc to generate code for sync primitives
-        set_source_files_properties(framefilter.cpp PROPERTIES COMPILE_FLAGS -march=i686)
-    endif()
-endif(GCC)
-
 set(LIBENCODER_HDR
     ../Lib/TLibEncoder/NALwrite.h
     ../Lib/TLibEncoder/SEIwrite.h
@@ -37,19 +25,21 @@ set(LIBENCODER_SRC
 source_group(TLibEncoder FILES ${LIBENCODER_HDR} ${LIBENCODER_SRC})
 
 if(GCC)
+    # encoder.cpp must include HM headers which are not careful about named parameters
+    set_source_files_properties(encoder.cpp PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+
+    # HM code is not careful about signed compares
     set_source_files_properties(compress.cpp ${LIBENCODER_SRC} PROPERTIES COMPILE_FLAGS 
         "-Wno-sign-compare")
 endif(GCC)
 if(MSVC)
     # ignore these warnings from HM source
     # /wd4244 type conversion, possible loss of data
-    # /wd4512 assignment operator could not be generated
-    # /wd4127 conditional expression is constant
     # /wd4389 signed/unsigned mismatch
     # /wd4018 '<' signed/unsigned mismatch
     # /wd4800 performance warning: bool coersion
     set_source_files_properties(${LIBENCODER_SRC} PROPERTIES COMPILE_FLAGS 
-        "/wd4244 /wd4512 /wd4127 /wd4389 /wd4018 /wd4800")
+        "/wd4244 /wd4389 /wd4018 /wd4800")
 endif(MSVC)
 
 check_include_files(inttypes.h HAVE_INT_TYPES_H)

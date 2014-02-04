@@ -86,6 +86,7 @@ typedef struct x265_picture
     int     poc;
     int     colorSpace;
     int64_t pts;
+    int64_t dts;
     void*   userData;
 
     /* new data members to this structure must be added to the end so that
@@ -137,6 +138,12 @@ typedef enum
                                              * new SLOW flags. */
 #define X265_CPU_SLOW_PSHUFB     0x2000000  /* such as on the Intel Atom */
 #define X265_CPU_SLOW_PALIGNR    0x4000000  /* such as on the AMD Bobcat */
+
+/* ARM */
+#define X265_CPU_ARMV6           0x0000001
+#define X265_CPU_NEON            0x0000002  /* ARM NEON */
+#define X265_CPU_FAST_NEON_MRC   0x0000004  /* Transfer from NEON to ARM register is fast (Cortex-A9) */
+
 
 static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star", "full", 0 };
 
@@ -337,15 +344,11 @@ typedef struct x265_param
 
     /*== GOP Structure and Lokoahead ==*/
 
-    /* Determine the intra refresh style your decoder will use. (0:none, 1:CDR,
-     * 2:IDR). Defaults to CDR */
-    int       decodingRefreshType;
-
     /* Enable open GOP - meaning I slices are not necessariy IDR and thus frames
      * encoded after an I slice may reference frames encoded prior to the I
      * frame which have remained in the decoded picture buffer.  Open GOP
      * generally has better compression efficiency and negligable encoder
-     * performance impact, but the use case may preclude it.  Default false */
+     * performance impact, but the use case may preclude it.  Default true */
     int       bOpenGOP;
 
     /* Minimum keyframe distance or intra period in number of frames. Can be
@@ -574,13 +577,13 @@ typedef struct x265_param
          * bitrate is specified on the command line, ABR is implied. Default 0 */
         int       bitrate;
 
-        /* The degree of rate fluctuation that x265 tolerates. Rate tolerance is used 
+        /* The degree of rate fluctuation that x265 tolerates. Rate tolerance is used
          * alongwith overflow (difference between actual and target bitrate), to adjust
            qp. Default is 1.0 */
         double    rateTolerance;
-        
-        /* qComp sets the quantizer curve compression factor. It weights the frame 
-         * quantizer based on the complexity of residual (measured by lookahead). 
+
+        /* qComp sets the quantizer curve compression factor. It weights the frame
+         * quantizer based on the complexity of residual (measured by lookahead).
          * Default value is 0.6. Increasing it to 1 will effectively generate CQP */
         double    qCompress;
 
@@ -591,13 +594,13 @@ typedef struct x265_param
 
         /* Max QP difference between frames. Default: 4 */
         int       qpStep;
-        
-        /* Ratefactor constant: targets a certain constant "quality". 
-         * Acceptable values between 0 and 51. Default value: 28 */
-        double    rfConstant;                  
 
-        /* Enable adaptive quantization. This mode distributes available bits between all 
-         * macroblocks of a frame, assigning more bits to low complexity areas. Turning 
+        /* Ratefactor constant: targets a certain constant "quality".
+         * Acceptable values between 0 and 51. Default value: 28 */
+        double    rfConstant;
+
+        /* Enable adaptive quantization. This mode distributes available bits between all
+         * macroblocks of a frame, assigning more bits to low complexity areas. Turning
          * this ON will usually affect PSNR negatively, however SSIM and visual quality
          * generally improves. Default: OFF (0) */
         int       aqMode;
@@ -606,19 +609,19 @@ typedef struct x265_param
          * AQ is enabled. Default value: 1.0. Acceptable values between 0.0 and 3.0 */
         double    aqStrength;
 
-        /* Sets the maximum rate the VBV buffer should be assumed to refill at 
+        /* Sets the maximum rate the VBV buffer should be assumed to refill at
          * Default is zero */
         int       vbvMaxBitrate;
 
         /* Sets the size of the VBV buffer in kilobits. Default is zero */
         int       vbvBufferSize;
 
-        /* Sets how full the VBV buffer must be before playback starts. If it is less than 
-         * 1, then the initial fill is vbv-init * vbvBufferSize. Otherwise, it is 
+        /* Sets how full the VBV buffer must be before playback starts. If it is less than
+         * 1, then the initial fill is vbv-init * vbvBufferSize. Otherwise, it is
          * interpreted as the initial fill in kbits. Default is 0.9 */
         double    vbvBufferInit;
 
-        /* Enable CUTree ratecontrol. This keeps track of the CUs that propagate temporally 
+        /* Enable CUTree ratecontrol. This keeps track of the CUs that propagate temporally
          * across frames and assigns more bits to these CUs. Improves encode efficiency.
          * Default: OFF (0) */
         int       cuTree;

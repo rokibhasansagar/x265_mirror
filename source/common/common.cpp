@@ -157,10 +157,9 @@ void x265_param_default(x265_param *param)
     param->tuQTMaxIntraDepth = 1;
 
     /* Coding Structure */
-    param->decodingRefreshType = 1;
     param->keyframeMin = 0;
     param->keyframeMax = 250;
-    param->bOpenGOP = 0;
+    param->bOpenGOP = 1;
     param->bframes = 4;
     param->lookaheadDepth = 20;
     param->bFrameAdaptive = X265_B_ADAPT_TRELLIS;
@@ -220,7 +219,7 @@ void x265_param_default(x265_param *param)
 
     /* Quality Measurement Metrics */
     param->bEnablePsnr = 0;
-    param->bEnableSsim = 1;
+    param->bEnableSsim = 0;
 }
 
 extern "C"
@@ -276,6 +275,7 @@ int x265_param_default_preset(x265_param *param, const char *preset, const char 
         if (!strcmp(preset, "ultrafast"))
         {
             param->lookaheadDepth = 10;
+            param->scenecutThreshold = 0; // disable lookahead
             param->maxCUSize = 32;
             param->searchRange = 25;
             param->bFrameAdaptive = 0;
@@ -400,7 +400,7 @@ int x265_param_default_preset(x265_param *param, const char *preset, const char 
     {
         if (!strcmp(tune, "psnr"))
         {
-            param->rc.aqStrength = 0.0;            
+            param->rc.aqStrength = 0.0;
         }
         else if (!strcmp(tune, "ssim"))
         {
@@ -522,30 +522,6 @@ int x265_check_params(x265_param *param)
     }
 
     CHECK(param->bEnableWavefront < 0, "WaveFrontSynchro cannot be negative");
-    if (param->rc.rateControlMode == X265_RC_CQP)
-    {
-        param->rc.aqMode = X265_AQ_NONE;
-        param->rc.bitrate = 0;   
-        param->rc.cuTree = 0;
-    }
-    
-    if (param->rc.aqMode == 0 && param->rc.cuTree)
-    {
-        param->rc.aqMode = X265_AQ_VARIANCE;
-        param->rc.aqStrength = 0.0;
-    }
-
-    if(param->bFrameAdaptive == 0 && param->rc.cuTree)
-    {
-        x265_log(NULL, X265_LOG_WARNING, "cuTree disabled, requires lookahead to be enabled\n");
-        param->rc.cuTree = 0;
-    }
-
-    if (param->rc.aqStrength == 0 && param->rc.cuTree == 0)
-    {
-        param->rc.aqMode = X265_AQ_NONE;        
-    }
-
     return check_failed;
 }
 
@@ -614,16 +590,16 @@ void x265_print_params(x265_param *param)
     switch (param->rc.rateControlMode)
     {
     case X265_RC_ABR:
-        x265_log(param, X265_LOG_INFO, "Rate Control / AQ-Strength / CUTree : ABR-%d kbps / %0.1f / %d\n", param->rc.bitrate, 
-            param->rc.aqStrength, param->rc.cuTree);
+        x265_log(param, X265_LOG_INFO, "Rate Control / AQ-Strength / CUTree : ABR-%d kbps / %0.1f / %d\n", param->rc.bitrate,
+                 param->rc.aqStrength, param->rc.cuTree);
         break;
     case X265_RC_CQP:
         x265_log(param, X265_LOG_INFO, "Rate Control / AQ-Strength / CUTree : CQP-%d / %0.1f / %d\n", param->rc.qp, param->rc.aqStrength,
-            param->rc.cuTree);
+                 param->rc.cuTree);
         break;
     case X265_RC_CRF:
-        x265_log(param, X265_LOG_INFO, "Rate Control / AQ-Strength / CUTree : CRF-%0.1f / %0.1f / %d\n", param->rc.rfConstant, 
-            param->rc.aqStrength, param->rc.cuTree);
+        x265_log(param, X265_LOG_INFO, "Rate Control / AQ-Strength / CUTree : CRF-%0.1f / %0.1f / %d\n", param->rc.rfConstant,
+                 param->rc.aqStrength, param->rc.cuTree);
         break;
     }
 
@@ -719,7 +695,7 @@ int x265_param_parse(x265_param *p, const char *name, const char *value)
     OPT("tskip-fast") p->bEnableTSkipFast = bvalue;
     OPT("strong-intra-smoothing") p->bEnableStrongIntraSmoothing = bvalue;
     OPT("constrained-intra") p->bEnableConstrainedIntra = bvalue;
-    OPT("refresh") p->decodingRefreshType = atoi(value);
+    OPT("open-gop") p->bOpenGOP = bvalue;
     OPT("keyint") p->keyframeMax = atoi(value);
     OPT("rc-lookahead") p->lookaheadDepth = atoi(value);
     OPT("bframes") p->bframes = atoi(value);
@@ -757,7 +733,7 @@ int x265_param_parse(x265_param *p, const char *name, const char *value)
     OPT("qp")
     {
         p->rc.qp = atoi(value);
-        p->rc.rateControlMode = X265_RC_CQP;        
+        p->rc.rateControlMode = X265_RC_CQP;
     }
     OPT("input-csp") p->internalCsp = parseName(value, x265_source_csp_names, berror);
     OPT("me")        p->searchMethod = parseName(value, x265_motion_est_names, berror);
@@ -776,7 +752,7 @@ char *x265_param2string(x265_param *p)
 {
     char *buf, *s;
 
-    buf = s = (char*)X265_MALLOC(char, 2000);
+    buf = s = X265_MALLOC(char, 2000);
     if (!buf)
         return NULL;
 
@@ -801,7 +777,7 @@ char *x265_param2string(x265_param *p)
     BOOL(p->bEnableTSkipFast, "tskip-fast");
     BOOL(p->bEnableStrongIntraSmoothing, "strong-intra-smoothing");
     BOOL(p->bEnableConstrainedIntra, "constrained-intra");
-    s += sprintf(s, " refresh=%d", p->decodingRefreshType);
+    BOOL(p->bOpenGOP, "open-gop");
     s += sprintf(s, " keyint=%d", p->keyframeMax);
     s += sprintf(s, " rc-lookahead=%d", p->lookaheadDepth);
     s += sprintf(s, " bframes=%d", p->bframes);

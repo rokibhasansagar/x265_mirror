@@ -385,7 +385,7 @@ void TEncCu::compressCU(TComDataCU* cu)
             i += next;
         }
         while (i < numPartition);
-#endif
+#endif // if LOG_CU_STATISTICS
     }
     else
     {
@@ -440,7 +440,7 @@ void TEncCu::compressCU(TComDataCU* cu)
             i = i + next;
         }
         while (i < numPartition);
-#endif
+#endif // if LOG_CU_STATISTICS
     }
 }
 
@@ -707,6 +707,7 @@ void TEncCu::xCompressCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, uint32_
     //PPAScopeEvent(TEncCu_xCompressCU + depth);
 
     TComPic* pic = outBestCU->getPic();
+
     m_abortFlag = false;
 
     // get Original YUV data from picture
@@ -1578,16 +1579,6 @@ void TEncCu::xCheckDQP(TComDataCU* cu)
     {
         if (!cu->getCbf(0, TEXT_LUMA, 0) && !cu->getCbf(0, TEXT_CHROMA_U, 0) && !cu->getCbf(0, TEXT_CHROMA_V, 0))
             cu->setQPSubParts(cu->getRefQP(0), 0, depth); // set QP to default QP
-    }
-}
-
-void TEncCu::xCopyAMVPInfo(AMVPInfo* src, AMVPInfo* dst)
-{
-    // TODO: SJB - there are multiple implementations of this function, it should be an AMVPInfo method
-    dst->m_num = src->m_num;
-    for (int i = 0; i < src->m_num; i++)
-    {
-        dst->m_mvCand[i] = src->m_mvCand[i];
     }
 }
 
