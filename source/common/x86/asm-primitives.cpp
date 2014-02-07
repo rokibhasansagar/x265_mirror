@@ -638,16 +638,6 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         INIT6(satd, _sse2);
         HEVC_SATD(sse2);
         p.satd[LUMA_4x4] = x265_pixel_satd_4x4_mmx2;
-        p.satd[LUMA_4x16] = x265_pixel_satd_4x16_sse2;
-        p.satd[LUMA_8x32] = x265_pixel_satd_8x32_sse2;
-        p.satd[LUMA_16x4] = x265_pixel_satd_16x4_sse2;
-        p.satd[LUMA_16x12] = x265_pixel_satd_16x12_sse2;
-        p.satd[LUMA_16x32] = x265_pixel_satd_16x32_sse2;
-        p.satd[LUMA_16x64] = x265_pixel_satd_16x64_sse2;
-        p.satd[LUMA_12x16] = x265_pixel_satd_12x16_sse2;
-        p.satd[LUMA_32x8] = x265_pixel_satd_32x8_sse2;
-        p.satd[LUMA_32x16] = x265_pixel_satd_32x16_sse2;
-        p.satd[LUMA_32x24] = x265_pixel_satd_32x24_sse2;
 
         p.sa8d_inter[LUMA_4x4]  = x265_pixel_satd_4x4_mmx2;
         SA8D_INTER_FROM_BLOCK(sse2);
@@ -691,27 +681,6 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         PIXEL_AVG(sse2);
         PIXEL_AVG_W4(mmx2);
         LUMA_VAR(_sse2);
-
-        INIT8(sad, _mmx2);
-        p.sad[LUMA_8x32]  = x265_pixel_sad_8x32_sse2;
-        p.sad[LUMA_16x4]  = x265_pixel_sad_16x4_sse2;
-        p.sad[LUMA_16x12] = x265_pixel_sad_16x12_sse2;
-        p.sad[LUMA_16x32] = x265_pixel_sad_16x32_sse2;
-
-        p.sad[LUMA_32x8]  = x265_pixel_sad_32x8_sse2;
-        p.sad[LUMA_32x16] = x265_pixel_sad_32x16_sse2;
-        p.sad[LUMA_32x24] = x265_pixel_sad_32x24_sse2;
-        p.sad[LUMA_32x32] = x265_pixel_sad_32x32_sse2;
-        p.sad[LUMA_32x64] = x265_pixel_sad_32x64_sse2;
-
-        p.sad[LUMA_64x16] = x265_pixel_sad_64x16_sse2;
-        p.sad[LUMA_64x32] = x265_pixel_sad_64x32_sse2;
-        p.sad[LUMA_64x48] = x265_pixel_sad_64x48_sse2;
-        p.sad[LUMA_64x64] = x265_pixel_sad_64x64_sse2;
-
-        p.sad[LUMA_48x64] = x265_pixel_sad_48x64_sse2;
-        p.sad[LUMA_24x32] = x265_pixel_sad_24x32_sse2;
-        p.sad[LUMA_12x16] = x265_pixel_sad_12x16_sse2;
 
         SAD_X3(sse2);
         p.sad_x3[LUMA_4x4] = x265_pixel_sad_x3_4x4_mmx2;
@@ -1107,7 +1076,37 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         SETUP_INTRA_ANG8(32, 4, sse4);
         SETUP_INTRA_ANG8(33, 3, sse4);
 
+        SETUP_INTRA_ANG32(3,  3,  sse4);
+        SETUP_INTRA_ANG32(4,  4,  sse4);
+        SETUP_INTRA_ANG32(5,  5,  sse4);
+        SETUP_INTRA_ANG32(6,  6,  sse4);
+        SETUP_INTRA_ANG32(7,  7,  sse4);
+        SETUP_INTRA_ANG32(8,  8,  sse4);
+        SETUP_INTRA_ANG32(9,  9,  sse4);
+        SETUP_INTRA_ANG32(10, 10, sse4);
+        SETUP_INTRA_ANG32(11, 11, sse4);
+        SETUP_INTRA_ANG32(12, 12, sse4);
+        SETUP_INTRA_ANG32(13, 13, sse4);
+        SETUP_INTRA_ANG32(14, 14, sse4);
+        SETUP_INTRA_ANG32(15, 15, sse4);
+        SETUP_INTRA_ANG32(16, 16, sse4);
         SETUP_INTRA_ANG32(17, 17, sse4);
+        SETUP_INTRA_ANG32(18, 18, sse4);
+        SETUP_INTRA_ANG32(19, 19, sse4);
+        SETUP_INTRA_ANG32(20, 20, sse4);
+        SETUP_INTRA_ANG32(21, 21, sse4);
+        SETUP_INTRA_ANG32(22, 22, sse4);
+        SETUP_INTRA_ANG32(23, 23, sse4);
+        SETUP_INTRA_ANG32(24, 24, sse4);
+        SETUP_INTRA_ANG32(25, 25, sse4);
+        SETUP_INTRA_ANG32(26, 26, sse4);
+        SETUP_INTRA_ANG32(27, 27, sse4);
+        SETUP_INTRA_ANG32(28, 28, sse4);
+        SETUP_INTRA_ANG32(29, 29, sse4);
+        SETUP_INTRA_ANG32(30, 30, sse4);
+        SETUP_INTRA_ANG32(31, 31, sse4);
+        SETUP_INTRA_ANG32(32, 32, sse4);
+        SETUP_INTRA_ANG32(33, 33, sse4);
 
         p.dct[DCT_8x8] = x265_dct8_sse4;
 
