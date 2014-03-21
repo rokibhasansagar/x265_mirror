@@ -32,7 +32,6 @@
 #include "cturow.h"
 #include "common.h"
 #include "slicetype.h"
-#include <math.h>
 
 namespace x265 {
 void weightAnalyse(TComSlice& slice, x265_param& param);
@@ -56,7 +55,6 @@ FrameEncoder::FrameEncoder()
         m_nalList[i] = NULL;
     }
 
-    m_blockRefPOC = -1;
     m_nalCount = 0;
     m_totalTime = 0;
     memset(&m_rce, 0, sizeof(RateControlEntry));
@@ -97,18 +95,20 @@ void FrameEncoder::destroy()
     stop();
 }
 
-void FrameEncoder::init(Encoder *top, int numRows)
+bool FrameEncoder::init(Encoder *top, int numRows)
 {
+    bool ok = true;
     m_top = top;
     m_cfg = top;
     m_numRows = numRows;
-    m_filterRowDelay = (m_cfg->param.saoLcuBasedOptimization && m_cfg->param.saoLcuBoundary) ?
-        2 : (m_cfg->param.bEnableSAO || m_cfg->param.bEnableLoopFilter ? 1 : 0);
+    m_filterRowDelay = (m_cfg->param->saoLcuBasedOptimization && m_cfg->param->saoLcuBoundary) ?
+        2 : (m_cfg->param->bEnableSAO || m_cfg->param->bEnableLoopFilter ? 1 : 0);
 
     m_rows = new CTURow[m_numRows];
     for (int i = 0; i < m_numRows; ++i)
     {
-        m_rows[i].create(top);
+        ok &= m_rows[i].create(top);
+
         for (int list = 0; list <= 1; list++)
         {
             for (int ref = 0; ref <= MAX_NUM_REF; ref++)
@@ -121,7 +121,7 @@ void FrameEncoder::init(Encoder *top, int numRows)
     // NOTE: 2 times of numRows because both Encoder and Filter in same queue
     if (!WaveFront::init(m_numRows * 2))
     {
-        assert(!"Unable to initialize job queue.");
+        x265_log(m_cfg->param, X265_LOG_ERROR, "unable to initialize wavefront queue\n");
         m_pool = NULL;
     }
 
@@ -136,11 +136,11 @@ void FrameEncoder::init(Encoder *top, int numRows)
     top->initPPS(&m_pps);
 
     m_sps.setNumLongTermRefPicSPS(0);
-    if (m_cfg->getPictureTimingSEIEnabled() || m_cfg->getDecodingUnitInfoSEIEnabled())
+    if (m_cfg->m_decodingUnitInfoSEIEnabled)
     {
-        m_sps.setHrdParameters(m_cfg->param.fpsNum, m_cfg->param.fpsDenom, 0, m_cfg->param.rc.bitrate, m_cfg->param.bframes > 0);
+        m_sps.setHrdParameters(m_cfg->param->fpsNum, m_cfg->param->fpsDenom, 0, m_cfg->param->rc.bitrate, m_cfg->param->bframes > 0);
     }
-    if (m_cfg->getBufferingPeriodSEIEnabled() || m_cfg->getPictureTimingSEIEnabled() || m_cfg->getDecodingUnitInfoSEIEnabled())
+    if (m_cfg->m_bufferingPeriodSEIEnabled || m_cfg->m_decodingUnitInfoSEIEnabled)
     {
         m_sps.getVuiParameters()->setHrdParametersPresentFlag(true);
     }
@@ -148,7 +148,7 @@ void FrameEncoder::init(Encoder *top, int numRows)
     m_sps.setTMVPFlagsPresent(true);
 
     // set default slice level flag to the same as SPS level flag
-    if (m_cfg->getUseScalingListId() == SCALING_LIST_OFF)
+    if (m_cfg->m_useScalingListId == SCALING_LIST_OFF)
     {
         for (int i = 0; i < m_numRows; i++)
         {
@@ -159,7 +159,7 @@ void FrameEncoder::init(Encoder *top, int numRows)
         m_sps.setScalingListPresentFlag(false);
         m_pps.setScalingListPresentFlag(false);
     }
-    else if (m_cfg->getUseScalingListId() == SCALING_LIST_DEFAULT)
+    else if (m_cfg->m_useScalingListId == SCALING_LIST_DEFAULT)
     {
         for (int i = 0; i < m_numRows; i++)
         {
@@ -172,11 +172,12 @@ void FrameEncoder::init(Encoder *top, int numRows)
     }
     else
     {
-        printf("error : ScalingList == %d not supported\n", m_top->getUseScalingListId());
-        assert(0);
+        x265_log(m_cfg->param, X265_LOG_ERROR, "ScalingList == %d not supported\n", m_top->m_useScalingListId);
+        ok = false;
     }
 
     start();
+    return ok;
 }
 
 int FrameEncoder::getStreamHeaders(NALUnitEBSP **nalunits)
@@ -189,7 +190,7 @@ int FrameEncoder::getStreamHeaders(NALUnitEBSP **nalunits)
     /* headers for start of bitstream */
     OutputNALUnit nalu(NAL_UNIT_VPS);
     entropyCoder->setBitstream(&nalu.m_bitstream);
-    entropyCoder->encodeVPS(m_cfg->getVPS());
+    entropyCoder->encodeVPS(&m_cfg->m_vps);
     writeRBSPTrailingBits(nalu.m_bitstream);
     CHECKED_MALLOC(nalunits[count], NALUnitEBSP, 1);
     nalunits[count]->init(nalu);
@@ -211,10 +212,10 @@ int FrameEncoder::getStreamHeaders(NALUnitEBSP **nalunits)
     nalunits[count]->init(nalu);
     count++;
 
-    if (m_cfg->getActiveParameterSetsSEIEnabled())
+    if (m_cfg->m_activeParameterSetsSEIEnabled)
     {
         SEIActiveParameterSets sei;
-        sei.activeVPSId = m_cfg->getVPS()->getVPSId();
+        sei.activeVPSId = m_cfg->m_vps.getVPSId();
         sei.m_fullRandomAccessFlag = false;
         sei.m_noParamSetUpdateFlag = false;
         sei.numSpsIdsMinus1 = 0;
@@ -228,13 +229,13 @@ int FrameEncoder::getStreamHeaders(NALUnitEBSP **nalunits)
         count++;
     }
 
-    if (m_cfg->getDisplayOrientationSEIAngle())
+    if (m_cfg->m_displayOrientationSEIAngle)
     {
         SEIDisplayOrientation sei;
         sei.cancelFlag = false;
         sei.horFlip = false;
         sei.verFlip = false;
-        sei.anticlockwiseRotation = m_cfg->getDisplayOrientationSEIAngle();
+        sei.anticlockwiseRotation = m_cfg->m_displayOrientationSEIAngle;
 
         nalu.resetToType(NAL_UNIT_PREFIX_SEI);
         entropyCoder->setBitstream(&nalu.m_bitstream);
@@ -274,16 +275,16 @@ void FrameEncoder::initSlice(TComPic* pic)
 #endif
     if (slice->getPPS()->getDeblockingFilterControlPresentFlag())
     {
-        slice->getPPS()->setDeblockingFilterOverrideEnabledFlag(!m_cfg->getLoopFilterOffsetInPPS());
-        slice->setDeblockingFilterOverrideFlag(!m_cfg->getLoopFilterOffsetInPPS());
-        slice->getPPS()->setPicDisableDeblockingFilterFlag(!m_cfg->param.bEnableLoopFilter);
-        slice->setDeblockingFilterDisable(!m_cfg->param.bEnableLoopFilter);
+        slice->getPPS()->setDeblockingFilterOverrideEnabledFlag(!m_cfg->m_loopFilterOffsetInPPS);
+        slice->setDeblockingFilterOverrideFlag(!m_cfg->m_loopFilterOffsetInPPS);
+        slice->getPPS()->setPicDisableDeblockingFilterFlag(!m_cfg->param->bEnableLoopFilter);
+        slice->setDeblockingFilterDisable(!m_cfg->param->bEnableLoopFilter);
         if (!slice->getDeblockingFilterDisable())
         {
-            slice->getPPS()->setDeblockingFilterBetaOffsetDiv2(m_cfg->getLoopFilterBetaOffset());
-            slice->getPPS()->setDeblockingFilterTcOffsetDiv2(m_cfg->getLoopFilterTcOffset());
-            slice->setDeblockingFilterBetaOffsetDiv2(m_cfg->getLoopFilterBetaOffset());
-            slice->setDeblockingFilterTcOffsetDiv2(m_cfg->getLoopFilterTcOffset());
+            slice->getPPS()->setDeblockingFilterBetaOffsetDiv2(m_cfg->m_loopFilterBetaOffset);
+            slice->getPPS()->setDeblockingFilterTcOffsetDiv2(m_cfg->m_loopFilterTcOffset);
+            slice->setDeblockingFilterBetaOffsetDiv2(m_cfg->m_loopFilterBetaOffset);
+            slice->setDeblockingFilterTcOffsetDiv2(m_cfg->m_loopFilterTcOffset);
         }
     }
     else
@@ -294,7 +295,7 @@ void FrameEncoder::initSlice(TComPic* pic)
         slice->setDeblockingFilterTcOffsetDiv2(0);
     }
 
-    slice->setMaxNumMergeCand(m_cfg->param.maxNumMergeCand);
+    slice->setMaxNumMergeCand(m_cfg->param->maxNumMergeCand);
 }
 
 void FrameEncoder::threadMain()
@@ -412,37 +413,17 @@ void FrameEncoder::compressFrame()
     }
 
     /* Clip qps back to 0-51 range before encoding */
-    qp = X265_MIN(qp, MAX_QP);
+    qp = Clip3(-QP_BD_OFFSET, MAX_QP, qp);
     slice->setSliceQp(qp);
     m_pic->m_avgQpAq = qp;
     slice->setSliceQpDelta(0);
     slice->setSliceQpDeltaCb(0);
     slice->setSliceQpDeltaCr(0);
 
-    int numSubstreams = m_cfg->param.bEnableWavefront ? m_pic->getPicSym()->getFrameHeightInCU() : 1;
+    int numSubstreams = m_cfg->param->bEnableWavefront ? m_pic->getPicSym()->getFrameHeightInCU() : 1;
     // TODO: these two items can likely be FrameEncoder member variables to avoid re-allocs
     TComOutputBitstream*  bitstreamRedirect = new TComOutputBitstream;
     TComOutputBitstream*  outStreams = new TComOutputBitstream[numSubstreams];
-
-    if (m_cfg->getUseASR() && !slice->isIntra())
-    {
-        int pocCurr = slice->getPOC();
-        int maxSR = m_cfg->param.searchRange;
-        int numPredDir = slice->isInterP() ? 1 : 2;
-
-        for (int dir = 0; dir <= numPredDir; dir++)
-        {
-            for (int refIdx = 0; refIdx < slice->getNumRefIdx(dir); refIdx++)
-            {
-                int refPOC = slice->getRefPic(dir, refIdx)->getPOC();
-                int newSR = Clip3(8, maxSR, (maxSR * ADAPT_SR_SCALE * abs(pocCurr - refPOC) + 4) >> 3);
-                for (int i = 0; i < m_numRows; i++)
-                {
-                    m_rows[i].m_search.setAdaptiveSearchRange(dir, refIdx, newSR);
-                }
-            }
-        }
-    }
 
     slice->setSliceSegmentBits(0);
     determineSliceBounds();
@@ -451,10 +432,12 @@ void FrameEncoder::compressFrame()
     //------------------------------------------------------------------------------
     //  Weighted Prediction parameters estimation.
     //------------------------------------------------------------------------------
-    if ((slice->getSliceType() == P_SLICE && slice->getPPS()->getUseWP()) || (slice->getSliceType() == B_SLICE && slice->getPPS()->getWPBiPred()))
+    bool bUseWeightP = slice->getSliceType() == P_SLICE && slice->getPPS()->getUseWP();
+    bool bUseweightB = slice->getSliceType() == B_SLICE && slice->getPPS()->getWPBiPred();
+    if (bUseWeightP || bUseweightB)
     {
         assert(slice->getPPS()->getUseWP());
-        weightAnalyse(*slice, m_cfg->param);
+        weightAnalyse(*slice, *m_cfg->param);
     }
 
     // Generate motion references
@@ -464,11 +447,8 @@ void FrameEncoder::compressFrame()
         for (int ref = 0; ref < slice->getNumRefIdx(l); ref++)
         {
             wpScalingParam *w = NULL;
-            if ((slice->isInterP() && slice->getPPS()->getUseWP() && slice->m_weightPredTable[l][ref][0].bPresentFlag))
-            {
+            if (bUseWeightP && slice->m_weightPredTable[l][ref][0].bPresentFlag)
                 w = slice->m_weightPredTable[l][ref];
-                slice->m_numWPRefs++;
-            }
             m_mref[l][ref].init(slice->getRefPic(l, ref)->getPicYuvRec(), w);
         }
     }
@@ -478,14 +458,14 @@ void FrameEncoder::compressFrame()
     // wave-front behind the CU compression and reconstruction
     compressCTURows();
 
-    if (m_cfg->param.bEnableWavefront)
+    if (m_cfg->param->bEnableWavefront)
     {
         slice->setNextSlice(true);
     }
 
-    if ((m_cfg->getRecoveryPointSEIEnabled()) && (slice->getSliceType() == I_SLICE))
+    if ((m_cfg->m_recoveryPointSEIEnabled) && (slice->getSliceType() == I_SLICE))
     {
-        if (m_cfg->getGradualDecodingRefreshInfoEnabled() && !slice->getRapPicFlag())
+        if (m_cfg->m_gradualDecodingRefreshInfoEnabled && !slice->getRapPicFlag())
         {
             // Gradual decoding refresh SEI
             OutputNALUnit nalu(NAL_UNIT_PREFIX_SEI);
@@ -520,6 +500,26 @@ void FrameEncoder::compressFrame()
         }
     }
 
+    if (!!m_cfg->param->interlaceMode)
+    {
+        OutputNALUnit nalu(NAL_UNIT_PREFIX_SEI);
+
+        SEIPictureTiming sei;
+        sei.m_picStruct = (slice->getPOC() & 1) && m_cfg->param->interlaceMode == 2 ? 1 /* top */ : 2 /* bot */;
+        sei.m_sourceScanType = 1;
+        sei.m_duplicateFlag = 0;
+
+        entropyCoder->setBitstream(&nalu.m_bitstream);
+        m_seiWriter.writeSEImessage(nalu.m_bitstream, sei, &m_sps);
+        writeRBSPTrailingBits(nalu.m_bitstream);
+        m_nalList[m_nalCount] = X265_MALLOC(NALUnitEBSP, 1);
+        if (m_nalList[m_nalCount])
+        {
+            m_nalList[m_nalCount]->init(nalu);
+            m_nalCount++;
+        }
+    }
+
     /* use the main bitstream buffer for storing the marshaled picture */
     if (m_sps.getUseSAO())
     {
@@ -534,7 +534,7 @@ void FrameEncoder::compressFrame()
             // Extend border after whole-frame SAO is finished
             for (int row = 0; row < m_numRows; row++)
             {
-                m_frameFilter.processRowPost(row);
+                m_frameFilter.processRowPost(row, m_cfg);
             }
         }
 
@@ -665,9 +665,9 @@ void FrameEncoder::compressFrame()
     }
 
     /* write decoded picture hash SEI messages */
-    if (m_cfg->param.decodedPictureHashSEI)
+    if (m_cfg->param->decodedPictureHashSEI)
     {
-        if (m_cfg->param.decodedPictureHashSEI == 1)
+        if (m_cfg->param->decodedPictureHashSEI == 1)
         {
             m_seiReconPictureDigest.method = SEIDecodedPictureHash::MD5;
             for (int i = 0; i < 3; i++)
@@ -675,7 +675,7 @@ void FrameEncoder::compressFrame()
                 MD5Final(&(m_pic->m_state[i]), m_seiReconPictureDigest.digest[i]);
             }
         }
-        else if (m_cfg->param.decodedPictureHashSEI == 2)
+        else if (m_cfg->param->decodedPictureHashSEI == 2)
         {
             m_seiReconPictureDigest.method = SEIDecodedPictureHash::CRC;
             for (int i = 0; i < 3; i++)
@@ -683,7 +683,7 @@ void FrameEncoder::compressFrame()
                 crcFinish((m_pic->m_crc[i]), m_seiReconPictureDigest.digest[i]);
             }
         }
-        else if (m_cfg->param.decodedPictureHashSEI == 3)
+        else if (m_cfg->param->decodedPictureHashSEI == 3)
         {
             m_seiReconPictureDigest.method = SEIDecodedPictureHash::CHECKSUM;
             for (int i = 0; i < 3; i++)
@@ -717,7 +717,6 @@ void FrameEncoder::compressFrame()
             ATOMIC_DEC(&refpic->m_countRefEncoders);
         }
     }
-    m_top->signalReconRowCompleted(m_pic->getPOC());
 
     m_pic->m_elapsedCompressTime = (double)(x265_mdate() - startCompressTime) / 1000000;
     delete[] outStreams;
@@ -752,7 +751,7 @@ void FrameEncoder::encodeSlice(TComOutputBitstream* substreams)
     g_bJustDoIt = g_bEncDecTraceDisable;
 #endif
 
-    const int  bWaveFrontsynchro = m_cfg->param.bEnableWavefront;
+    const int  bWaveFrontsynchro = m_cfg->param->bEnableWavefront;
     const uint32_t heightInLCUs = m_pic->getPicSym()->getFrameHeightInCU();
     const int  numSubstreams = (bWaveFrontsynchro ? heightInLCUs : 1);
     uint32_t bitsOriginallyInSubstreams = 0;
@@ -930,11 +929,11 @@ void FrameEncoder::compressCTURows()
         m_rows[i].m_busy = false;
     }
 
-    int range = m_cfg->param.searchRange; /* fpel search */
+    int range = m_cfg->param->searchRange; /* fpel search */
     range    += 1;                        /* diamond search range check lag */
     range    += 2;                        /* subpel refine */
     range    += NTAPS_LUMA / 2;           /* subpel filter half-length */
-    uint32_t refLagRows = 1 + ((range + g_maxCUHeight - 1) / g_maxCUHeight);
+    int refLagRows = 1 + ((range + g_maxCUSize - 1) / g_maxCUSize);
     int numPredDir = slice->isInterP() ? 1 : slice->isInterB() ? 2 : 0;
 
     m_pic->m_SSDY = 0;
@@ -943,12 +942,12 @@ void FrameEncoder::compressCTURows()
 
     m_frameFilter.start(m_pic);
 
-    if (m_pool && m_cfg->param.bEnableWavefront)
+    if (m_pool && m_cfg->param->bEnableWavefront)
     {
         WaveFront::clearEnabledRowMask();
         WaveFront::enqueue();
 
-        for (uint32_t row = 0; row < (uint32_t)m_numRows; row++)
+        for (int row = 0; row < m_numRows; row++)
         {
             // block until all reference frames have reconstructed the rows we need
             for (int l = 0; l < numPredDir; l++)
@@ -957,16 +956,9 @@ void FrameEncoder::compressCTURows()
                 {
                     TComPic *refpic = slice->getRefPic(l, ref);
 
-                    /* indicate which reference picture we might wait for,
-                     * prior to checking recon row count */
-                    m_blockRefPOC = refpic->getPOC();
-                    while ((refpic->m_reconRowCount != (uint32_t)m_numRows) &&
-                           (refpic->m_reconRowCount < row + refLagRows))
-                    {
-                        m_reconRowWait.wait();
-                    }
-
-                    m_blockRefPOC = -1;
+                    int reconRowCount = refpic->m_reconRowCount.get();
+                    while ((reconRowCount != m_numRows) && (reconRowCount < row + refLagRows))
+                        reconRowCount = refpic->m_reconRowCount.waitForChange(reconRowCount);
 
                     if (slice->getPPS()->getUseWP() && slice->getSliceType() == P_SLICE && m_mref[l][ref].isWeighted)
                     {
@@ -1001,16 +993,9 @@ void FrameEncoder::compressCTURows()
                     {
                         TComPic *refpic = slice->getRefPic(list, ref);
 
-                        /* indicate which reference picture we might wait for,
-                         * prior to checking recon row count */
-                        m_blockRefPOC = refpic->getPOC();
-                        while ((refpic->m_reconRowCount != (uint32_t)m_numRows) &&
-                               (refpic->m_reconRowCount < i + refLagRows))
-                        {
-                            m_reconRowWait.wait();
-                        }
-
-                        m_blockRefPOC = -1;
+                        int reconRowCount = refpic->m_reconRowCount.get();
+                        while ((reconRowCount != m_numRows) && (reconRowCount < i + refLagRows))
+                            reconRowCount = refpic->m_reconRowCount.waitForChange(reconRowCount);
 
                         if (slice->getPPS()->getUseWP() && slice->getSliceType() == P_SLICE && m_mref[l][ref].isWeighted)
                         {
@@ -1046,30 +1031,32 @@ void FrameEncoder::processRowEncoder(int row)
          * the same CU row, which often resulted in bad pointer accesses. We
          * believe the problem is fixed, but are leaving this check in place
          * to prevent crashes in case it is not. */
-        x265_log(&m_cfg->param, X265_LOG_WARNING,
+        x265_log(m_cfg->param, X265_LOG_WARNING,
                  "internal error - simulaneous row access detected. Please report HW to x265-devel@videolan.org");
         return;
     }
     curRow.m_busy = true;
 
     int64_t startTime = x265_mdate();
-    CTURow& codeRow = m_rows[m_cfg->param.bEnableWavefront ? row : 0];
+    CTURow& codeRow = m_rows[m_cfg->param->bEnableWavefront ? row : 0];
     const uint32_t numCols = m_pic->getPicSym()->getFrameWidthInCU();
     const uint32_t lineStartCUAddr = row * numCols;
-    bool isVbv = m_cfg->param.rc.vbvBufferSize > 0 && m_cfg->param.rc.vbvMaxBitrate > 0;
+    bool isVbv = m_cfg->param->rc.vbvBufferSize > 0 && m_cfg->param->rc.vbvMaxBitrate > 0;
     for (uint32_t col = curRow.m_completed; col < numCols; col++)
     {
         const uint32_t cuAddr = lineStartCUAddr + col;
         TComDataCU* cu = m_pic->getCU(cuAddr);
         cu->initCU(m_pic, cuAddr);
+        cu->setQPSubParts(m_pic->getSlice()->getSliceQp(), 0, 0);
 
         codeRow.m_entropyCoder.setEntropyCoder(&m_sbacCoder, m_pic->getSlice());
         codeRow.m_entropyCoder.resetEntropy();
-        TEncSbac *bufSbac = (m_cfg->param.bEnableWavefront && col == 0 && row > 0) ? &m_rows[row - 1].m_bufferSbacCoder : NULL;
+        TEncSbac *bufSbac = (m_cfg->param->bEnableWavefront && col == 0 && row > 0) ? &m_rows[row - 1].m_bufferSbacCoder : NULL;
         if (isVbv)
         {
             if (!row)
                 m_pic->m_rowDiagQp[row] = m_pic->m_avgQpRc;
+
             if ((uint32_t)row >= col && (row != 0))
                 cu->m_baseQp = m_pic->getCU(cuAddr - numCols + 1)->m_baseQp;
             else
@@ -1078,16 +1065,16 @@ void FrameEncoder::processRowEncoder(int row)
         else
             cu->m_baseQp = m_pic->m_avgQpRc;
 
-        if (m_cfg->param.rc.aqMode || isVbv)
+        if (m_cfg->param->rc.aqMode || isVbv)
         {
             int qp = calcQpForCu(m_pic, cuAddr, cu->m_baseQp);
             setLambda(qp, row);
-            qp = X265_MIN(qp, MAX_QP);
-            cu->setQP(0, char(qp));
-            if (m_cfg->param.rc.aqMode)
+            qp = Clip3(-QP_BD_OFFSET, MAX_QP, qp);
+            cu->setQPSubParts(char(qp), 0, 0);
+            if (m_cfg->param->rc.aqMode)
                 m_pic->m_qpaAq[row] += qp;
         }
-        codeRow.processCU(cu, m_pic->getSlice(), bufSbac, m_cfg->param.bEnableWavefront && col == 1);
+        codeRow.processCU(cu, m_pic->getSlice(), bufSbac, m_cfg->param->bEnableWavefront && col == 1);
         if (isVbv)
         {
             // Update encoded bits, satdCost, baseQP for each CU
@@ -1160,20 +1147,20 @@ int FrameEncoder::calcQpForCu(TComPic *pic, uint32_t cuAddr, double baseQp)
     double qp_offset = 0;
     int maxBlockCols = (pic->getPicYuvOrg()->getWidth() + (16 - 1)) / 16;
     int maxBlockRows = (pic->getPicYuvOrg()->getHeight() + (16 - 1)) / 16;
-    int noOfBlocks = g_maxCUWidth / 16;
+    int noOfBlocks = g_maxCUSize / 16;
     int block_y = (cuAddr / pic->getPicSym()->getFrameWidthInCU()) * noOfBlocks;
     int block_x = (cuAddr * noOfBlocks) - block_y * pic->getPicSym()->getFrameWidthInCU();
 
-    double *qpoffs = (pic->getSlice()->isReferenced() && m_cfg->param.rc.cuTree) ? pic->m_lowres.qpOffset : pic->m_lowres.qpAqOffset;
+    double *qpoffs = (pic->getSlice()->isReferenced() && m_cfg->param->rc.cuTree) ? pic->m_lowres.qpOffset : pic->m_lowres.qpAqOffset;
     int cnt = 0, idx = 0;
     for (int h = 0; h < noOfBlocks && block_y < maxBlockRows; h++, block_y++)
     {
         for (int w = 0; w < noOfBlocks && (block_x + w) < maxBlockCols; w++)
         {
             idx = block_x + w + (block_y * maxBlockCols);
-            if (m_cfg->param.rc.aqMode)
+            if (m_cfg->param->rc.aqMode)
                 qp_offset += qpoffs[idx];
-            if (m_cfg->param.rc.vbvBufferSize > 0 && m_cfg->param.rc.vbvMaxBitrate > 0)
+            if (m_cfg->param->rc.vbvBufferSize > 0 && m_cfg->param->rc.vbvMaxBitrate > 0)
             {
                 m_pic->m_cuCostsForVbv[cuAddr] += m_pic->m_lowres.lowresCostForRc[idx];
                 m_pic->m_intraCuCostsForVbv[cuAddr] += m_pic->m_lowres.intraCost[idx];

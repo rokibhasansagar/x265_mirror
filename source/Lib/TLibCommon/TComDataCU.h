@@ -86,7 +86,6 @@ private:
 
     TComPic*      m_pic;            ///< picture class pointer
     TComSlice*    m_slice;          ///< slice header pointer
-    TComPattern*  m_pattern;        ///< neighbor access class pointer
 
     // -------------------------------------------------------------------------------------------------------------------
     // CU description
@@ -97,8 +96,7 @@ private:
     uint32_t      m_cuPelX;          ///< CU position in a pixel (X)
     uint32_t      m_cuPelY;          ///< CU position in a pixel (Y)
     uint32_t      m_numPartitions;   ///< total number of minimum partitions in a CU
-    UChar*        m_width;           ///< array of widths
-    UChar*        m_height;          ///< array of heights
+    uint8_t*      m_cuSize;          ///< array of cu width/height
     UChar*        m_depth;           ///< array of depths
     int           m_chromaFormat;
     int           m_hChromaShift;
@@ -135,20 +133,16 @@ private:
     TComDataCU*   m_cuAbove;         ///< pointer of above CU
     TComDataCU*   m_cuLeft;          ///< pointer of left CU
     TComDataCU*   m_cuColocated[2];  ///< pointer of temporally colocated CU's for both directions
-    TComMvField   m_mvFieldA;        ///< motion vector of position A
-    TComMvField   m_mvFieldB;        ///< motion vector of position B
-    TComMvField   m_mvFieldC;        ///< motion vector of position C
 
     // -------------------------------------------------------------------------------------------------------------------
     // coding tool information
     // -------------------------------------------------------------------------------------------------------------------
 
     bool*         m_bMergeFlags;      ///< array of merge flags
-    UChar*        m_mergeIndex;       ///< array of merge candidate indices
     UChar*        m_lumaIntraDir;     ///< array of intra directions (luma)
     UChar*        m_chromaIntraDir;   ///< array of intra directions (chroma)
     UChar*        m_interDir;         ///< array of inter directions
-    char*         m_mvpIdx[2];        ///< array of motion vector predictor candidates
+    uint8_t*      m_mvpIdx[2];        ///< array of motion vector predictor candidates or merge candidate indices [0]
     bool*         m_iPCMFlags;        ///< array of intra_pcm flags
 
     // -------------------------------------------------------------------------------------------------------------------
@@ -191,7 +185,9 @@ public:
     void          destroy();
 
     void          initCU(TComPic* pic, uint32_t cuAddr);
+    void          initEstData(uint32_t depth);
     void          initEstData(uint32_t depth, int qp);
+    void          initSubCU(TComDataCU* cu, uint32_t partUnitIdx, uint32_t depth);
     void          initSubCU(TComDataCU* cu, uint32_t partUnitIdx, uint32_t depth, int qp);
 
     void          copyToSubCU(TComDataCU* lcu, uint32_t partUnitIdx, uint32_t depth);
@@ -219,13 +215,11 @@ public:
 
     uint32_t      getCUPelY()                      { return m_cuPelY; }
 
-    TComPattern*  getPattern()                     { return m_pattern; }
-
     UChar*        getDepth()                       { return m_depth; }
 
     UChar         getDepth(uint32_t idx)           { return m_depth[idx]; }
 
-    void          setDepthSubParts(uint32_t depth, uint32_t absPartIdx);
+    void          setDepthSubParts(uint32_t depth);
 
     // -------------------------------------------------------------------------------------------------------------------
     // member functions for CU data
@@ -254,13 +248,9 @@ public:
 
     void          setPredModeSubParts(PredMode eMode, uint32_t absPartIdx, uint32_t depth);
 
-    UChar*        getWidth()                     { return m_width; }
+    uint8_t*      getCUSize()                     { return m_cuSize; }
 
-    UChar         getWidth(uint32_t idx)             { return m_width[idx]; }
-
-    UChar*        getHeight()                    { return m_height; }
-
-    UChar         getHeight(uint32_t idx)            { return m_height[idx]; }
+    uint8_t       getCUSize(uint32_t idx)            { return m_cuSize[idx]; }
 
     char*         getQP()                        { return m_qp; }
 
@@ -328,11 +318,11 @@ public:
 
     void          setMergeFlag(uint32_t idx, bool bMergeFlag) { m_bMergeFlags[idx] = bMergeFlag; }
 
-    UChar*        getMergeIndex()                   { return m_mergeIndex; }
+    uint8_t*      getMergeIndex()                   { return m_mvpIdx[0]; }
 
-    UChar         getMergeIndex(uint32_t idx)           { return m_mergeIndex[idx]; }
+    uint8_t       getMergeIndex(uint32_t idx)           { return m_mvpIdx[0][idx]; }
 
-    void          setMergeIndex(uint32_t idx, uint32_t mergeIndex) { m_mergeIndex[idx] = (UChar)mergeIndex; }
+    void          setMergeIndex(uint32_t idx, int mergeIndex) { m_mvpIdx[0][idx] = (uint8_t)mergeIndex; }
 
     template<typename T>
     void          setSubPart(T bParameter, T* pbBaseLCU, uint32_t cuAddr, uint32_t cuDepth, uint32_t puIdx);
@@ -379,19 +369,13 @@ public:
     void          fillMvpCand(uint32_t partIdx, uint32_t partAddr, int picList, int refIdx, AMVPInfo* info);
     bool          isDiffMER(int xN, int yN, int xP, int yP);
     void          getPartPosition(uint32_t partIdx, int& xP, int& yP, int& nPSW, int& nPSH);
-    void          setMVPIdx(int picList, uint32_t idx, int mvpIdx) { m_mvpIdx[picList][idx] = (char)mvpIdx; }
+    void          setMVPIdx(int picList, uint32_t idx, int mvpIdx) { m_mvpIdx[picList][idx] = (uint8_t)mvpIdx; }
 
-    int           getMVPIdx(int picList, uint32_t idx)             { return m_mvpIdx[picList][idx]; }
+    uint8_t       getMVPIdx(int picList, uint32_t idx)             { return m_mvpIdx[picList][idx]; }
 
-    char*         getMVPIdx(int picList)                       { return m_mvpIdx[picList]; }
+    uint8_t*      getMVPIdx(int picList)                       { return m_mvpIdx[picList]; }
 
     void          clipMv(MV& outMV);
-
-    void          getMvPredLeft(MV& mvPred)       { mvPred = m_mvFieldA.mv; }
-
-    void          getMvPredAbove(MV& mvPred)      { mvPred = m_mvFieldB.mv; }
-
-    void          getMvPredAboveRight(MV& mvPred) { mvPred = m_mvFieldC.mv; }
 
     // -------------------------------------------------------------------------------------------------------------------
     // utility functions for neighboring information
@@ -451,8 +435,6 @@ public:
     // member functions for symbol prediction (most probable / mode conversion)
     // -------------------------------------------------------------------------------------------------------------------
 
-    uint32_t      getIntraSizeIdx(uint32_t absPartIdx);
-
     void          getAllowedChromaDir(uint32_t absPartIdx, uint32_t* modeList);
     int           getIntraDirLumaPredictor(uint32_t absPartIdx, int32_t* intraDirPred);
 
@@ -472,7 +454,7 @@ public:
 
     uint32_t&     getTotalNumPart()               { return m_numPartitions; }
 
-    uint32_t      getCoefScanIdx(uint32_t absPartIdx, uint32_t width, uint32_t height, bool bIsLuma, bool bIsIntra);
+    uint32_t      getCoefScanIdx(uint32_t absPartIdx, uint32_t log2TrSize, bool bIsLuma, bool bIsIntra);
 
     // -------------------------------------------------------------------------------------------------------------------
     // member functions to support multiple color space formats

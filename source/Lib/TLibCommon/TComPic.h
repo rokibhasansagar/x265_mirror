@@ -49,7 +49,7 @@
 namespace x265 {
 // private namespace
 
-class TEncCfg;
+class Encoder;
 
 //! \ingroup TLibCommon
 //! \{
@@ -77,7 +77,7 @@ private:
 public:
 
     //** Frame Parallelism - notification between FrameEncoders of available motion reference rows **
-    volatile uint32_t     m_reconRowCount;      // count of CTU rows completely reconstructed and extended for motion reference
+    ThreadSafeInteger     m_reconRowCount;      // count of CTU rows completely reconstructed and extended for motion reference
     volatile uint32_t     m_countRefEncoders;   // count of FrameEncoder threads monitoring m_reconRowCount
     void*                 m_userData;           // user provided pointer passed in with this picture
 
@@ -120,9 +120,9 @@ public:
     TComPic();
     virtual ~TComPic();
 
-    bool          create(TEncCfg* cfg);
-    virtual void  destroy(int bframes);
-    void          reInit(TEncCfg* cfg);
+    bool          create(Encoder* cfg);
+    virtual void  destroy();
+    void          reInit(Encoder* cfg);
 
     bool          getUsedByCurr()           { return m_bUsedByCurr; }
 
@@ -160,9 +160,7 @@ public:
 
     uint32_t      getFrameHeightInCU()    { return m_picSym->getFrameHeightInCU(); }
 
-    uint32_t      getMinCUWidth()         { return m_picSym->getMinCUWidth(); }
-
-    uint32_t      getMinCUHeight()        { return m_picSym->getMinCUHeight(); }
+    uint32_t      getMinCUSize()          { return m_picSym->getMinCUSize(); }
 
     uint32_t      getParPelX(UChar partIdx) { return getParPelX(partIdx); }
 

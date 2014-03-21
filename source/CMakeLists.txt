@@ -14,10 +14,11 @@ project (x265)
 cmake_minimum_required (VERSION 2.8.8) # OBJECT libraries require 2.8.8
 include(CheckIncludeFiles)
 include(CheckFunctionExists)
+include(CheckSymbolExists)
 include(CheckCXXCompilerFlag)
 
 # X265_BUILD must be incremented each time the public API is changed
-set(X265_BUILD 7)
+set(X265_BUILD 10)
 configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
                "${PROJECT_BINARY_DIR}/x265.def")
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
@@ -27,9 +28,9 @@ SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
 
 # System architecture detection
 string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" SYSPROC)
-if("${SYSPROC}" STREQUAL "i386"   OR "${SYSPROC}" STREQUAL "amd64" OR
-   "${SYSPROC}" STREQUAL "x86_64" OR "${SYSPROC}" STREQUAL "x86"   OR
-   "${SYSPROC}" STREQUAL "")
+set(X86_ALIASES x86 i386 i686 x86_64 amd64)
+list(FIND X86_ALIASES "${SYSPROC}" X86MATCH)
+if("${SYSPROC}" STREQUAL "" OR X86MATCH GREATER "-1")
     message(STATUS "Detected x86 system processor")
     set(X86 1)
     add_definitions(-DX265_ARCH_X86=1)
@@ -37,7 +38,7 @@ if("${SYSPROC}" STREQUAL "i386"   OR "${SYSPROC}" STREQUAL "amd64" OR
         set(X64 1)
         add_definitions(-DX86_64=1)
     endif()
-elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "armv6l")
+elseif(${SYSPROC} STREQUAL "armv6l")
     message(STATUS "Detected ARM system processor")
     set(ARM 1)
     add_definitions(-DX265_ARCH_ARM=1 -DHAVE_ARMV6=1)
@@ -85,7 +86,6 @@ if(MSVC)
     endif (STATIC_LINK_CRT)
     add_definitions(/W4)  # Full warnings
     add_definitions(/Ob2) # always inline
-    add_definitions(/Oi)  # enable intrinsics
     add_definitions(/MP)  # multithreaded build
 
     # disable Microsofts suggestions for proprietary secure APIs
@@ -114,7 +114,7 @@ elseif(CMAKE_COMPILER_IS_GNUCXX)
     endif()
     execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
 endif()
-if (GCC)
+if(GCC)
     if(X64 AND NOT WIN32)
         add_definitions(-fPIC)
     endif(X64 AND NOT WIN32)
@@ -138,6 +138,8 @@ if(YASM_FOUND AND X86)
 endif()
 
 # Build options
+set(LIB_INSTALL_DIR lib CACHE STRING "Install location of libraries")
+set(BIN_INSTALL_DIR bin CACHE STRING "Install location of executables")
 
 if(X64)
     # NOTE: We only officially support 16bit-per-pixel compiles of x265
@@ -189,11 +191,10 @@ if (WIN32)
         set(PLATFORM_LIBS ${PLATFORM_LIBS} ${VLD_LIBRARIES})
         link_directories(${VLD_LIBRARY_DIRS})
     endif()
-    option(WINXP_SUPPORT "Make binaries compatible with Windows XP" OFF)
-    if(WINXP_SUPPORT)
-        # force workarounds for atomic intrinsics introduced after XP
-        add_definitions(-D_WIN32_WINNT=_WIN32_WINNT_WINXP)
-    endif(WINXP_SUPPORT)
+    if(MINGW)
+        # MinGW requires a forced Windows version in order to use CONDITION_VARIABLE
+        add_definitions(-D_WIN32_WINNT=_WIN32_WINNT_VISTA)
+    endif(MINGW)
 endif()
 
 include(version) # determine X265_VERSION and X265_LATEST_TAG
@@ -244,9 +245,8 @@ if(NOT MSVC)
     set_target_properties(x265-static PROPERTIES OUTPUT_NAME x265)
 endif()
 install(TARGETS x265-static
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib)
+    LIBRARY DESTINATION ${LIB_INSTALL_DIR}
+    ARCHIVE DESTINATION ${LIB_INSTALL_DIR})
 install(FILES x265.h "${PROJECT_BINARY_DIR}/x265_config.h" DESTINATION include)
 
 if(CMAKE_RC_COMPILER)
@@ -267,7 +267,7 @@ endif()
 
 option(ENABLE_SHARED "Build shared library" ON)
 if(ENABLE_SHARED)
-    add_library(x265-shared SHARED dllmain.cpp "${PROJECT_BINARY_DIR}/x265.def" ${YASM_OBJS}
+    add_library(x265-shared SHARED "${PROJECT_BINARY_DIR}/x265.def" ${YASM_OBJS}
                 ${X265_RC_FILE} $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common>)
     target_link_libraries(x265-shared ${PLATFORM_LIBS})
     if(MSVC)
@@ -282,9 +282,8 @@ if(ENABLE_SHARED)
         # shared library is not installed if a tag is not found
         set_target_properties(x265-shared PROPERTIES VERSION ${X265_LATEST_TAG} SOVERSION ${X265_BUILD})
         install(TARGETS x265-shared
-                RUNTIME DESTINATION bin
-                LIBRARY DESTINATION lib
-                ARCHIVE DESTINATION lib)
+                LIBRARY DESTINATION ${LIB_INSTALL_DIR}
+                ARCHIVE DESTINATION ${LIB_INSTALL_DIR})
     endif()
 endif()
 
@@ -304,7 +303,7 @@ if(X265_LATEST_TAG)
     # Produce a pkg-config file
     configure_file("x265.pc.in" "x265.pc" @ONLY)
     install(FILES       "${CMAKE_CURRENT_BINARY_DIR}/x265.pc"
-            DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/pkgconfig")
+            DESTINATION "${CMAKE_INSTALL_PREFIX}/${LIB_INSTALL_DIR}/pkgconfig")
 endif()
 
 if(NOT WIN32)
@@ -333,16 +332,22 @@ if(ENABLE_CLI)
     endif(NOT HAVE_GETOPT_H)
 
     if(XCODE)
+        # Xcode seems unable to link the CLI with libs, so link as one targget
         add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT} x265.cpp x265.h
                            $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> ${YASM_OBJS} ${YASM_SRCS})
     else()
-        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT} ${X265_RC_FILE}
-                           x265.cpp x265.h)
-        target_link_libraries(cli x265-static ${PLATFORM_LIBS})
+        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT} ${X265_RC_FILE} x265.cpp x265.h)
+        if(WIN32 OR NOT ENABLE_SHARED OR INTEL_CXX)
+            # The CLI cannot link to the shared library on Windows, it
+            # requires internal APIs not exported from the DLL
+            target_link_libraries(cli x265-static ${PLATFORM_LIBS})
+        else()
+            target_link_libraries(cli x265-shared ${PLATFORM_LIBS})
+        endif()
     endif()
     set_target_properties(cli PROPERTIES OUTPUT_NAME x265)
 
-    install(TARGETS cli DESTINATION bin)
+    install(TARGETS cli DESTINATION ${BIN_INSTALL_DIR})
 endif(ENABLE_CLI)
 
 if(ENABLE_ASSEMBLY AND NOT XCODE)
