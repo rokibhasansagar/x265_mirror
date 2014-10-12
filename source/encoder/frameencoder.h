@@ -98,7 +98,7 @@ public:
     void destroy();
 
     /* triggers encode of a new frame by the worker thread */
-    void startCompressFrame(Frame* pic);
+    void startCompressFrame(Frame* curFrame);
 
     /* blocks until worker thread is done, returns access unit */
     Frame *getEncodedPicture(NALList& list);
@@ -124,7 +124,8 @@ public:
     uint32_t                 m_checksum[3];
     double                   m_elapsedCompressTime; // elapsed time spent in worker threads
     double                   m_frameTime;           // wall time from frame start to finish
-    FrameStats               m_frameStats;          // stats of current frame for multipass encodes
+    StatisticLog             m_sliceTypeLog[3];     // per-slice type CU statistics
+    FrameStats               m_frameStats;          // stats of current frame for multi-pass encodes
     volatile bool            m_bAllRowsStop;
     volatile int             m_vbvResetTriggerRow;
     uint64_t                 m_accessUnitBits;
@@ -161,7 +162,8 @@ protected:
     void encodeSlice();
 
     void threadMain();
-    int calcQpForCu(uint32_t cuAddr, double baseQp);
+    int  calcQpForCu(uint32_t cuAddr, double baseQp);
+    void collectCTUStatistics(TComDataCU& ctu);
     void noiseReductionUpdate();
 
     /* Called by WaveFront::findJob() */
