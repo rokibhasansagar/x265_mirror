@@ -32,9 +32,8 @@
 #include "common.h"
 #include "predict.h"
 #include "quant.h"
+#include "yuv.h"
 #include "shortyuv.h"
-#include "threadpool.h"
-#include "TLibCommon/TComYuv.h"
 #include "TLibCommon/TComDataCU.h"
 
 #include "entropy.h"
@@ -67,9 +66,8 @@ struct StatisticLog
 
 class Encoder;
 class Entropy;
-struct ThreadLocalData;
 
-class Analysis : public JobProvider, public Search
+class Analysis : public Search
 {
 public:
 
@@ -77,52 +75,35 @@ public:
         PRED_2Nx2N,
         PRED_Nx2N,
         PRED_2NxN,
+        PRED_2NxnU,
+        PRED_2NxnD,
+        PRED_nLx2N,
+        PRED_nRx2N,
         PRED_MERGE,
-        PRED_INTRA,
+        PRED_SKIP,
+        PRED_INTRA,     // 2Nx2N intra
+        PRED_INTRA_NxN, // 4x4 PU blocks for 8x8 CU
+        PRED_SPLIT,
         MAX_PRED_TYPES
     };
 
-    TComDataCU*  m_memPool;
+    struct ModeDepth
+    {
+        Mode           pred[MAX_PRED_TYPES];
+        Mode*          bestMode;
+        Yuv            fencYuv;
+        DataCUMemPool  cuMemPool;
+        MVFieldMemPool mvFieldMemPool;
+    };
 
-    TComDataCU*  m_interCU_2Nx2N[NUM_CU_DEPTH];
-    TComDataCU*  m_interCU_2NxN[NUM_CU_DEPTH];
-    TComDataCU*  m_interCU_Nx2N[NUM_CU_DEPTH];
-    TComDataCU*  m_intraInInterCU[NUM_CU_DEPTH];
-    TComDataCU*  m_mergeCU[NUM_CU_DEPTH];
-    TComDataCU*  m_bestMergeCU[NUM_CU_DEPTH];
-    TComDataCU*  m_bestCU[NUM_CU_DEPTH]; // Best CUs at each depth
-    TComDataCU*  m_tempCU[NUM_CU_DEPTH]; // Temporary CUs at each depth
-
-    TComYuv**    m_bestPredYuv;          // Best Prediction Yuv for each depth
-    ShortYuv**   m_bestResiYuv;          // Best Residual Yuv for each depth
-    TComYuv**    m_bestRecoYuv;          // Best Reconstruction Yuv for each depth
-
-    TComYuv**    m_tmpPredYuv;           // Temporary Prediction Yuv for each depth
-    ShortYuv**   m_tmpResiYuv;           // Temporary Residual Yuv for each depth
-    TComYuv**    m_tmpRecoYuv;           // Temporary Reconstruction Yuv for each depth
-    TComYuv**    m_modePredYuv[MAX_PRED_TYPES]; // Prediction buffers for inter, intra, rect(2) and merge
-    TComYuv**    m_bestMergeRecoYuv;
-    TComYuv**    m_bestIntraRecoYuv;
-    TComYuv**    m_origYuv;             // Original Yuv at each depth
-
-    bool         m_bEncodeDQP;
-
-    StatisticLog  m_sliceTypeLog[3];
-    StatisticLog* m_log;
+    ModeDepth m_modeDepth[NUM_CU_DEPTH];
 
     Analysis();
     bool create(uint32_t totalDepth, uint32_t maxWidth, ThreadLocalData* tld);
     void destroy();
-    void compressCTU(TComDataCU* ctu, const Entropy& initialContext);
+    Search::Mode& compressCTU(TComDataCU& ctu, const Entropy& initialContext);
 
 protected:
-
-    /* Job provider details */
-    CU*           m_curCUData;
-    int           m_curDepth;
-    ThreadLocalData* m_tld;
-    bool          m_bJobsQueued;
-    bool findJob(int threadId);
 
     /* mode analysis distribution */
     Entropy       m_intraContexts;
@@ -130,44 +111,35 @@ protected:
     volatile int  m_numAcquiredJobs;
     volatile int  m_numCompletedJobs;
     Event         m_modeCompletionEvent;
-    void parallelAnalysisJob(int threadId, int jobId);
-
-    /* motion estimation distribution */
-    TComDataCU*   m_curMECu;
-    int           m_curPart;
-    MotionData    m_bestME[2];
-    uint32_t      m_listSelBits[3];
-    int           m_totalNumME;
-    volatile int  m_numAcquiredME;
-    volatile int  m_numCompletedME;
-    Event         m_meCompletionEvent;
-    Lock          m_outputLock;
+    bool findJob(int threadId);
+    void parallelModeAnalysis(int threadId, int jobId);
     void parallelME(int threadId, int meId);
 
-    /* Warning: The interface for these functions will undergo significant changes as a major refactor is under progress */
-    void compressIntraCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, uint32_t depth, CU *cu);
-    void checkIntra(TComDataCU*& outTempCU, PartSize partSize, CU *cu, uint8_t* sharedModes);
-    void compressSharedIntraCTU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, uint32_t depth, CU *cu, uint8_t* sharedDepth,
-                                char* sharedPartSizes, uint8_t* sharedModes, uint32_t &zOrder);
-    void compressInterCU_rd0_4(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TComDataCU* parentCU, uint32_t depth, CU *cu,
-                               int bInsidePicture, uint32_t partitionIndex, uint32_t minDepth);
-    void compressInterCU_rd5_6(TComDataCU*& outBestCU, TComDataCU*& outTempCU, uint32_t depth, CU *cu);
-    void checkMerge2Nx2N_rd0_4(CU* cu, uint32_t depth);
-    void checkMerge2Nx2N_rd5_6(TComDataCU*& outBestCU, TComDataCU*& outTempCU, CU* cu, bool *earlyDetectionSkipMode,
-                               TComYuv*& outBestPredYuv, TComYuv*& yuvReconBest);
-    void checkInter_rd0_4(TComDataCU* outTempCU, CU* cu, TComYuv* outPredYUV, PartSize partSize);
-    void parallelInterSearch(TComDataCU* cu, CU* cuData, TComYuv* predYuv, bool bChroma);
-    void checkInter_rd5_6(TComDataCU*& outBestCU, TComDataCU*& outTempCU, CU* cu, PartSize partSize, bool bMergeOnly);
-    void checkIntraInInter_rd0_4(TComDataCU* cu, CU* cuData);
-    void checkIntraInInter_rd5_6(TComDataCU*& outBestCU, TComDataCU*& outTempCU, CU* cu, PartSize partSize);
+    /* full analysis for an I-slice CU */
+    void compressIntraCU(const TComDataCU& parentCTU, const CU& cuData, x265_intra_data* sdata, uint32_t &zOrder);
 
-    void checkBestMode(TComDataCU*& outBestCU, TComDataCU*& outTempCU, uint32_t depth);
-    void encodeIntraInInter(TComDataCU* cu, CU* cuData, TComYuv* fencYuv, TComYuv* predYuv, ShortYuv* outResiYuv, TComYuv* outReconYuv, Entropy&);
-    void encodeResidue(TComDataCU* ctu, CU* cuData, uint32_t absPartIdx, uint32_t depth);
-    void checkDQP(TComDataCU* cu);
-    void deriveTestModeAMP(TComDataCU* bestCU, PartSize parentSize, bool &bTestAMP_Hor, bool &bTestAMP_Ver,
-                           bool &bTestMergeAMP_Hor, bool &bTestMergeAMP_Ver);
-    void fillOrigYUVBuffer(TComDataCU* outCU, TComYuv* origYuv);
+    /* full analysis for a P or B slice CU */
+    void compressInterCU_rd0_4(const TComDataCU& parentCTU, const CU& cuData);
+    void compressInterCU_rd5_6(const TComDataCU& parentCTU, const CU& cuData);
+
+    /* measure merge and skip */
+    void checkMerge2Nx2N_rd0_4(Mode& skip, Mode& merge, const CU& cuData);
+    void checkMerge2Nx2N_rd5_6(Mode& skip, Mode& merge, const CU& cuData);
+
+    /* measure inter options */
+    void checkInter_rd0_4(Mode& interMode, const CU& cuData, PartSize partSize);
+    void checkInter_rd5_6(Mode& interMode, const CU& cuData, PartSize partSize, bool bMergeOnly);
+
+    /* measure intra options */
+    void checkIntra(Mode& intraMode, const CU& cuData, PartSize partSize, uint8_t* sharedModes);
+    void checkIntraInInter_rd0_4(Mode& intraMode, const CU& cuData);
+    void encodeIntraInInter(Mode& intraMode, const CU& cuData);
+
+    void checkDQP(TComDataCU& cu, const CU& cuData);
+    void checkBestMode(Mode& mode, uint32_t depth);
+
+    void encodeResidue(const TComDataCU& parentCTU, const CU& cuData);
+    void deriveTestModeAMP(const TComDataCU& cu, bool &bHor, bool &bVer, bool &bMergeOnly);
 };
 
 struct ThreadLocalData
