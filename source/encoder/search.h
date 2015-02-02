@@ -28,12 +28,23 @@
 #include "predict.h"
 #include "quant.h"
 #include "bitcost.h"
+#include "framedata.h"
 #include "yuv.h"
 #include "threadpool.h"
 
 #include "rdcost.h"
 #include "entropy.h"
 #include "motion.h"
+
+#if DETAILED_CU_STATS
+#define ProfileCUScopeNamed(name, cu, acc, count) \
+    m_stats[cu.m_encData->m_frameEncoderID].count++; \
+    ScopedElapsedTime name(m_stats[cu.m_encData->m_frameEncoderID].acc)
+#define ProfileCUScope(cu, acc, count) ProfileCUScopeNamed(timedScope, cu, acc, count)
+#else
+#define ProfileCUScopeNamed(name, cu, acc, count)
+#define ProfileCUScope(cu, acc, count)
+#endif
 
 namespace x265 {
 // private namespace
@@ -122,6 +133,68 @@ struct Mode
     }
 };
 
+#if DETAILED_CU_STATS
+/* This structure is intended for performance debugging and we make no attempt
+ * to handle dynamic range overflows. Care should be taken to avoid long encodes
+ * if you care about the accuracy of these elapsed times and counters. This
+ * profiling is orthoganal to PPA/VTune and can be enabled indepedently from
+ * either of them */
+struct CUStats
+{
+    int64_t  intraRDOElapsedTime;
+    int64_t  interRDOElapsedTime;
+    int64_t  intraAnalysisElapsedTime;    /* in RD > 4, includes RDO cost */
+    int64_t  motionEstimationElapsedTime;
+    int64_t  pmeTime;
+    int64_t  pmeBlockTime;
+    int64_t  pmodeTime;
+    int64_t  pmodeBlockTime;
+    int64_t  totalCTUTime;
+
+    uint64_t countIntraRDO;
+    uint64_t countInterRDO;
+    uint64_t countIntraAnalysis;
+    uint64_t countMotionEstimate;
+    uint64_t countPMETasks;
+    uint64_t countPMEMasters;
+    uint64_t countPModeTasks;
+    uint64_t countPModeMasters;
+    uint64_t totalCTUs;
+
+    CUStats() { clear(); }
+
+    void clear()
+    {
+        memset(this, 0, sizeof(*this));
+    }
+
+    void accumulate(CUStats& other)
+    {
+        intraRDOElapsedTime += other.intraRDOElapsedTime;
+        interRDOElapsedTime += other.interRDOElapsedTime;
+        intraAnalysisElapsedTime += other.intraAnalysisElapsedTime;
+        motionEstimationElapsedTime += other.motionEstimationElapsedTime;
+        pmeTime += other.pmeTime;
+        pmeBlockTime += other.pmeBlockTime;
+        pmodeTime += other.pmodeTime;
+        pmodeBlockTime += other.pmodeBlockTime;
+        totalCTUTime += other.totalCTUTime;
+
+        countIntraRDO += other.countIntraRDO;
+        countInterRDO += other.countInterRDO;
+        countIntraAnalysis += other.countIntraAnalysis;
+        countMotionEstimate += other.countMotionEstimate;
+        countPMETasks += other.countPMETasks;
+        countPMEMasters += other.countPMEMasters;
+        countPModeTasks += other.countPModeTasks;
+        countPModeMasters += other.countPModeMasters;
+        totalCTUs += other.totalCTUs;
+
+        other.clear();
+    }
+}; 
+#endif
+
 inline int getTUBits(int idx, int numIdx)
 {
     return idx + (idx < numIdx - 1);
@@ -131,7 +204,6 @@ class Search : public JobProvider, public Predict
 {
 public:
 
-    static const pixel   zeroPixel[MAX_CU_SIZE];
     static const int16_t zeroShort[MAX_CU_SIZE];
 
     MotionEstimate  m_me;
@@ -151,6 +223,11 @@ public:
     bool            m_bEnableRDOQ;
     uint32_t        m_numLayers;
     uint32_t        m_refLagPixels;
+
+#if DETAILED_CU_STATS
+    /* Accumulate CU statistics seperately for each frame encoder */
+    CUStats         m_stats[X265_MAX_FRAME_THREADS];
+#endif
 
     Search();
     ~Search();
@@ -267,7 +344,7 @@ protected:
     static void updateCandList(uint32_t mode, uint64_t cost, int maxCandCount, uint32_t* candModeList, uint64_t* candCostList);
 
     // get most probable luma modes for CU part, and bit cost of all non mpm modes
-    uint32_t getIntraRemModeBits(CUData & cu, uint32_t absPartIdx, uint32_t preds[3], uint64_t& mpms) const;
+    uint32_t getIntraRemModeBits(CUData & cu, uint32_t absPartIdx, uint32_t mpmModes[3], uint64_t& mpms) const;
 
     void updateModeCost(Mode& m) const { m.rdCost = m_rdCost.m_psyRd ? m_rdCost.calcPsyRdCost(m.distortion, m.totalBits, m.psyEnergy) : m_rdCost.calcRdCost(m.distortion, m.totalBits); }
 };
