@@ -4789,6 +4789,121 @@ cglobal interp_8tap_vert_ps_4x4, 4, 6, 5
     movhps          [r2 + r5], xm2
     RET
 
+%macro FILTER_VER_LUMA_AVX2_4xN 3
+INIT_YMM avx2
+%if ARCH_X86_64 == 1
+cglobal interp_8tap_vert_%3_%1x%2, 4, 9, 10
+    mov             r4d, r4m
+    shl             r4d, 7
+
+%ifdef PIC
+    lea             r5, [tab_LumaCoeffVer_32]
+    add             r5, r4
+%else
+    lea             r5, [tab_LumaCoeffVer_32 + r4]
+%endif
+
+    lea             r4, [r1 * 3]
+    sub             r0, r4
+    lea             r6, [r1 * 4]
+%ifidn %3,pp
+    mova            m6, [pw_512]
+%else
+    add             r3d, r3d
+    vbroadcasti128  m6, [pw_2000]
+%endif
+    lea             r8, [r3 * 3]
+    mova            m5, [interp4_vpp_shuf]
+    mova            m0, [interp4_vpp_shuf1]
+    mova            m7, [interp4_vpp_shuf1 + mmsize]
+    mov             r7d, %2 / 8
+.loop:
+    movd            xm1, [r0]
+    pinsrd          xm1, [r0 + r1], 1
+    pinsrd          xm1, [r0 + r1 * 2], 2
+    pinsrd          xm1, [r0 + r4], 3                       ; m1 = row[3 2 1 0]
+    lea             r0, [r0 + r1 * 4]
+    movd            xm2, [r0]
+    pinsrd          xm2, [r0 + r1], 1
+    pinsrd          xm2, [r0 + r1 * 2], 2
+    pinsrd          xm2, [r0 + r4], 3                       ; m2 = row[7 6 5 4]
+    vinserti128     m1, m1, xm2, 1                          ; m1 = row[7 6 5 4 3 2 1 0]
+    lea             r0, [r0 + r1 * 4]
+    movd            xm3, [r0]
+    pinsrd          xm3, [r0 + r1], 1
+    pinsrd          xm3, [r0 + r1 * 2], 2
+    pinsrd          xm3, [r0 + r4], 3                       ; m3 = row[11 10 9 8]
+    vinserti128     m2, m2, xm3, 1                          ; m2 = row[11 10 9 8 7 6 5 4]
+    lea             r0, [r0 + r1 * 4]
+    movd            xm4, [r0]
+    pinsrd          xm4, [r0 + r1], 1
+    pinsrd          xm4, [r0 + r1 * 2], 2                   ; m4 = row[x 14 13 12]
+    vinserti128     m3, m3, xm4, 1                          ; m3 = row[x 14 13 12 11 10 9 8]
+    vpermd          m8, m0, m1                              ; m8 = row[4 3 3 2 2 1 1 0]
+    vpermd          m4, m0, m2                              ; m4 = row[8 7 7 6 6 5 5 4]
+    vpermd          m1, m7, m1                              ; m1 = row[6 5 5 4 4 3 3 2]
+    vpermd          m2, m7, m2                              ; m2 = row[10 9 9 8 8 7 7 6]
+    vpermd          m9, m0, m3                              ; m9 = row[12 11 11 10 10 9 9 8]
+    vpermd          m3, m7, m3                              ; m3 = row[14 13 13 12 12 11 11 10]
+
+    pshufb          m8, m8, m5
+    pshufb          m1, m1, m5
+    pshufb          m4, m4, m5
+    pshufb          m9, m9, m5
+    pshufb          m2, m2, m5
+    pshufb          m3, m3, m5
+    pmaddubsw       m8, [r5]
+    pmaddubsw       m1, [r5 + mmsize]
+    pmaddubsw       m9, [r5 + 2 * mmsize]
+    pmaddubsw       m3, [r5 + 3 * mmsize]
+    paddw           m8, m1
+    paddw           m9, m3
+    pmaddubsw       m1, m4, [r5 + 2 * mmsize]
+    pmaddubsw       m3, m2, [r5 + 3 * mmsize]
+    pmaddubsw       m4, [r5]
+    pmaddubsw       m2, [r5 + mmsize]
+    paddw           m3, m1
+    paddw           m2, m4
+    paddw           m8, m3                                  ; m8 = WORD ROW[3 2 1 0]
+    paddw           m9, m2                                  ; m9 = WORD ROW[7 6 5 4]
+
+%ifidn %3,pp
+    pmulhrsw        m8, m6
+    pmulhrsw        m9, m6
+    packuswb        m8, m9
+    vextracti128    xm1, m8, 1
+    movd            [r2], xm8
+    pextrd          [r2 + r3], xm8, 1
+    movd            [r2 + r3 * 2], xm1
+    pextrd          [r2 + r8], xm1, 1
+    lea             r2, [r2 + r3 * 4]
+    pextrd          [r2], xm8, 2
+    pextrd          [r2 + r3], xm8, 3
+    pextrd          [r2 + r3 * 2], xm1, 2
+    pextrd          [r2 + r8], xm1, 3
+%else
+    psubw           m8, m6
+    psubw           m9, m6
+    vextracti128    xm1, m8, 1
+    vextracti128    xm2, m9, 1
+    movq            [r2], xm8
+    movhps          [r2 + r3], xm8
+    movq            [r2 + r3 * 2], xm1
+    movhps          [r2 + r8], xm1
+    lea             r2, [r2 + r3 * 4]
+    movq            [r2], xm9
+    movhps          [r2 + r3], xm9
+    movq            [r2 + r3 * 2], xm2
+    movhps          [r2 + r8], xm2
+%endif
+    lea             r2, [r2 + r3 * 4]
+    sub             r0, r6
+    dec             r7d
+    jnz             .loop
+    RET
+%endif
+%endmacro
+
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_pp_4x4(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
@@ -4798,11 +4913,13 @@ FILTER_VER_LUMA_4xN 4, 4, pp
 ; void interp_8tap_vert_pp_4x8(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_4xN 4, 8, pp
+FILTER_VER_LUMA_AVX2_4xN 4, 8, pp
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_pp_4x16(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_4xN 4, 16, pp
+FILTER_VER_LUMA_AVX2_4xN 4, 16, pp
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_ps_4x4(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
@@ -4813,11 +4930,13 @@ FILTER_VER_LUMA_4xN 4, 4, ps
 ; void interp_8tap_vert_ps_4x8(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_4xN 4, 8, ps
+FILTER_VER_LUMA_AVX2_4xN 4, 8, ps
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_ps_4x16(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_4xN 4, 16, ps
+FILTER_VER_LUMA_AVX2_4xN 4, 16, ps
 
 %macro PROCESS_LUMA_AVX2_W8_8R 0
     movq            xm1, [r0]                       ; m1 = row 0
@@ -5004,9 +5123,9 @@ cglobal interp_8tap_vert_%3_%1x%2, 5, 7, 8
     RET
 %endmacro
 
-%macro FILTER_VER_LUMA_AVX2_8xN 2
+%macro FILTER_VER_LUMA_AVX2_8xN 3
 INIT_YMM avx2
-cglobal interp_8tap_vert_pp_%1x%2, 4, 7, 8, 0-gprsize
+cglobal interp_8tap_vert_%3_%1x%2, 4, 7, 8, 0-gprsize
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -5019,11 +5138,17 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 7, 8, 0-gprsize
     lea             r4, [r1 * 3]
     sub             r0, r4
     lea             r6, [r1 * 4]
-    mov             word [rsp], %2 / 8
+%ifidn %3,pp
     mova            m7, [pw_512]
+%else
+    add             r3d, r3d
+    vbroadcasti128  m7, [pw_2000]
+%endif
+    mov             word [rsp], %2 / 8
 
 .loop:
     PROCESS_LUMA_AVX2_W8_8R
+%ifidn %3,pp
     pmulhrsw        m5, m7                          ; m5 = word: row 0, row 1
     pmulhrsw        m2, m7                          ; m2 = word: row 2, row 3
     pmulhrsw        m1, m7                          ; m1 = word: row 4, row 5
@@ -5043,6 +5168,27 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 7, 8, 0-gprsize
     lea             r2, [r2 + r3 * 2]
     movhps          [r2], xm1
     movhps          [r2 + r3], xm4
+%else
+    psubw           m5, m7                          ; m5 = word: row 0, row 1
+    psubw           m2, m7                          ; m2 = word: row 2, row 3
+    psubw           m1, m7                          ; m1 = word: row 4, row 5
+    psubw           m4, m7                          ; m4 = word: row 6, row 7
+    vextracti128    xm6, m5, 1
+    vextracti128    xm3, m2, 1
+    vextracti128    xm0, m1, 1
+    movu            [r2], xm5
+    movu            [r2 + r3], xm6
+    lea             r2, [r2 + r3 * 2]
+    movu            [r2], xm2
+    movu            [r2 + r3], xm3
+    lea             r2, [r2 + r3 * 2]
+    movu            [r2], xm1
+    movu            [r2 + r3], xm0
+    lea             r2, [r2 + r3 * 2]
+    movu            [r2], xm4
+    vextracti128    xm4, m4, 1
+    movu            [r2 + r3], xm4
+%endif
     lea             r2, [r2 + r3 * 2]
     sub             r0, r6
     dec             word [rsp]
@@ -5050,8 +5196,9 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 7, 8, 0-gprsize
     RET
 %endmacro
 
+%macro FILTER_VER_LUMA_AVX2_8x8 1
 INIT_YMM avx2
-cglobal interp_8tap_vert_pp_8x8, 4, 6, 7
+cglobal interp_8tap_vert_%1_8x8, 4, 6, 7
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -5065,8 +5212,14 @@ cglobal interp_8tap_vert_pp_8x8, 4, 6, 7
     lea             r4, [r1 * 3]
     sub             r0, r4
     PROCESS_LUMA_AVX2_W8_8R
-    lea             r4, [r3 * 3]
+%ifidn %1,pp
     mova            m3, [pw_512]
+%else
+    add             r3d, r3d
+    vbroadcasti128  m3, [pw_2000]
+%endif
+    lea             r4, [r3 * 3]
+%ifidn %1,pp
     pmulhrsw        m5, m3                          ; m5 = word: row 0, row 1
     pmulhrsw        m2, m3                          ; m2 = word: row 2, row 3
     pmulhrsw        m1, m3                          ; m1 = word: row 4, row 5
@@ -5084,10 +5237,31 @@ cglobal interp_8tap_vert_pp_8x8, 4, 6, 7
     movq            [r2 + r3], xm4
     movhps          [r2 + r3 * 2], xm1
     movhps          [r2 + r4], xm4
+%else
+    psubw           m5, m3                          ; m5 = word: row 0, row 1
+    psubw           m2, m3                          ; m2 = word: row 2, row 3
+    psubw           m1, m3                          ; m1 = word: row 4, row 5
+    psubw           m4, m3                          ; m4 = word: row 6, row 7
+    vextracti128    xm6, m5, 1
+    vextracti128    xm3, m2, 1
+    vextracti128    xm0, m1, 1
+    movu            [r2], xm5
+    movu            [r2 + r3], xm6
+    movu            [r2 + r3 * 2], xm2
+    movu            [r2 + r4], xm3
+    lea             r2, [r2 + r3 * 4]
+    movu            [r2], xm1
+    movu            [r2 + r3], xm0
+    movu            [r2 + r3 * 2], xm4
+    vextracti128    xm4, m4, 1
+    movu            [r2 + r4], xm4
+%endif
     RET
+%endmacro
 
+%macro FILTER_VER_LUMA_AVX2_8x4 1
 INIT_YMM avx2
-cglobal interp_8tap_vert_pp_8x4, 4, 6, 7
+cglobal interp_8tap_vert_%1_8x4, 4, 6, 7
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -5101,8 +5275,14 @@ cglobal interp_8tap_vert_pp_8x4, 4, 6, 7
     lea             r4, [r1 * 3]
     sub             r0, r4
     PROCESS_LUMA_AVX2_W8_4R
-    lea             r4, [r3 * 3]
+%ifidn %1,pp
     mova            m3, [pw_512]
+%else
+    add             r3d, r3d
+    vbroadcasti128  m3, [pw_2000]
+%endif
+    lea             r4, [r3 * 3]
+%ifidn %1,pp
     pmulhrsw        m5, m3                          ; m5 = word: row 0, row 1
     pmulhrsw        m2, m3                          ; m2 = word: row 2, row 3
     packuswb        m5, m2
@@ -5111,49 +5291,66 @@ cglobal interp_8tap_vert_pp_8x4, 4, 6, 7
     movq            [r2 + r3], xm2
     movhps          [r2 + r3 * 2], xm5
     movhps          [r2 + r4], xm2
+%else
+    psubw           m5, m3                          ; m5 = word: row 0, row 1
+    psubw           m2, m3                          ; m2 = word: row 2, row 3
+    movu            [r2], xm5
+    vextracti128    xm5, m5, 1
+    movu            [r2 + r3], xm5
+    movu            [r2 + r3 * 2], xm2
+    vextracti128    xm2, m2, 1
+    movu            [r2 + r4], xm2
+%endif
     RET
+%endmacro
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_pp_8x4(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_8xN 8, 4, pp
+FILTER_VER_LUMA_AVX2_8x4 pp
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_pp_8x8(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_8xN 8, 8, pp
+FILTER_VER_LUMA_AVX2_8x8 pp
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_pp_8x16(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_8xN 8, 16, pp
-FILTER_VER_LUMA_AVX2_8xN 8, 16
+FILTER_VER_LUMA_AVX2_8xN 8, 16, pp
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_pp_8x32(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_8xN 8, 32, pp
-FILTER_VER_LUMA_AVX2_8xN 8, 32
+FILTER_VER_LUMA_AVX2_8xN 8, 32, pp
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_ps_8x4(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_8xN 8, 4, ps
+FILTER_VER_LUMA_AVX2_8x4 ps
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_ps_8x8(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_8xN 8, 8, ps
+FILTER_VER_LUMA_AVX2_8x8 ps
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_ps_8x16(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_8xN 8, 16, ps
+FILTER_VER_LUMA_AVX2_8xN 8, 16, ps
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_ps_8x32(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_8xN 8, 32, ps
+FILTER_VER_LUMA_AVX2_8xN 8, 32, ps
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_%3_12x%2(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
@@ -5269,9 +5466,10 @@ FILTER_VER_LUMA_12xN 12, 16, pp
 ;-------------------------------------------------------------------------------------------------------------
 FILTER_VER_LUMA_12xN 12, 16, ps
 
+%macro FILTER_VER_LUMA_AVX2_12x16 1
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_12x16, 4, 7, 15
+cglobal interp_8tap_vert_%1_12x16, 4, 7, 15
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -5284,8 +5482,13 @@ cglobal interp_8tap_vert_pp_12x16, 4, 7, 15
 
     lea             r4, [r1 * 3]
     sub             r0, r4
-    lea             r6, [r3 * 3]
+%ifidn %1,pp
     mova            m14, [pw_512]
+%else
+    add             r3d, r3d
+    vbroadcasti128  m14, [pw_2000]
+%endif
+    lea             r6, [r3 * 3]
 
     movu            xm0, [r0]                       ; m0 = row 0
     movu            xm1, [r0 + r1]                  ; m1 = row 1
@@ -5400,6 +5603,7 @@ cglobal interp_8tap_vert_pp_12x16, 4, 7, 15
     paddw           m9, m13
     pmaddubsw       m11, [r5]
 
+%ifidn %1,pp
     pmulhrsw        m0, m14                         ; m0 = word: row 0
     pmulhrsw        m1, m14                         ; m1 = word: row 1
     pmulhrsw        m2, m14                         ; m2 = word: row 2
@@ -5428,6 +5632,33 @@ cglobal interp_8tap_vert_pp_12x16, 4, 7, 15
     pextrd          [r2 + 8], xm4, 2
     movq            [r2 + r3], xm5
     pextrd          [r2 + r3 + 8], xm5, 2
+%else
+    psubw           m0, m14                         ; m0 = word: row 0
+    psubw           m1, m14                         ; m1 = word: row 1
+    psubw           m2, m14                         ; m2 = word: row 2
+    psubw           m3, m14                         ; m3 = word: row 3
+    psubw           m4, m14                         ; m4 = word: row 4
+    psubw           m5, m14                         ; m5 = word: row 5
+    movu            [r2], xm0
+    vextracti128    xm0, m0, 1
+    movq            [r2 + 16], xm0
+    movu            [r2 + r3], xm1
+    vextracti128    xm1, m1, 1
+    movq            [r2 + r3 + 16], xm1
+    movu            [r2 + r3 * 2], xm2
+    vextracti128    xm2, m2, 1
+    movq            [r2 + r3 * 2 + 16], xm2
+    movu            [r2 + r6], xm3
+    vextracti128    xm3, m3, 1
+    movq            [r2 + r6 + 16], xm3
+    lea             r2, [r2 + r3 * 4]
+    movu            [r2], xm4
+    vextracti128    xm4, m4, 1
+    movq            [r2 + 16], xm4
+    movu            [r2 + r3], xm5
+    vextracti128    xm5, m5, 1
+    movq            [r2 + r3 + 16], xm5
+%endif
 
     movu            xm13, [r0 + r1]                 ; m13 = row 13
     punpckhbw       xm0, xm12, xm13
@@ -5452,6 +5683,7 @@ cglobal interp_8tap_vert_pp_12x16, 4, 7, 15
     paddw           m11, m1
     pmaddubsw       m13, [r5]
 
+%ifidn %1,pp
     pmulhrsw        m6, m14                         ; m6 = word: row 6
     pmulhrsw        m7, m14                         ; m7 = word: row 7
     packuswb        m6, m7
@@ -5461,6 +5693,16 @@ cglobal interp_8tap_vert_pp_12x16, 4, 7, 15
     pextrd          [r2 + r3 * 2 + 8], xm6, 2
     movq            [r2 + r6], xm7
     pextrd          [r2 + r6 + 8], xm7, 2
+%else
+    psubw           m6, m14                         ; m6 = word: row 6
+    psubw           m7, m14                         ; m7 = word: row 7
+    movu            [r2 + r3 * 2], xm6
+    vextracti128    xm6, m6, 1
+    movq            [r2 + r3 * 2 + 16], xm6
+    movu            [r2 + r6], xm7
+    vextracti128    xm7, m7, 1
+    movq            [r2 + r6 + 16], xm7
+%endif
     lea             r2, [r2 + r3 * 4]
 
     movu            xm1, [r0 + r4]                  ; m1 = row 15
@@ -5536,6 +5778,7 @@ cglobal interp_8tap_vert_pp_12x16, 4, 7, 15
     pmaddubsw       m7, [r5 + 3 * mmsize]
     paddw           m1, m7
 
+%ifidn %1,pp
     pmulhrsw        m8, m14                         ; m8 = word: row 8
     pmulhrsw        m9, m14                         ; m9 = word: row 9
     pmulhrsw        m10, m14                        ; m10 = word: row 10
@@ -5573,12 +5816,52 @@ cglobal interp_8tap_vert_pp_12x16, 4, 7, 15
     pextrd          [r2 + r3 * 2 + 8], xm0, 2
     movq            [r2 + r6], xm1
     pextrd          [r2 + r6 + 8], xm1, 2
+%else
+    psubw           m8, m14                         ; m8 = word: row 8
+    psubw           m9, m14                         ; m9 = word: row 9
+    psubw           m10, m14                        ; m10 = word: row 10
+    psubw           m11, m14                        ; m11 = word: row 11
+    psubw           m12, m14                        ; m12 = word: row 12
+    psubw           m13, m14                        ; m13 = word: row 13
+    psubw           m0, m14                         ; m0 = word: row 14
+    psubw           m1, m14                         ; m1 = word: row 15
+    movu            [r2], xm8
+    vextracti128    xm8, m8, 1
+    movq            [r2 + 16], xm8
+    movu            [r2 + r3], xm9
+    vextracti128    xm9, m9, 1
+    movq            [r2 + r3 + 16], xm9
+    movu            [r2 + r3 * 2], xm10
+    vextracti128    xm10, m10, 1
+    movq            [r2 + r3 * 2 + 16], xm10
+    movu            [r2 + r6], xm11
+    vextracti128    xm11, m11, 1
+    movq            [r2 + r6 + 16], xm11
+    lea             r2, [r2 + r3 * 4]
+    movu            [r2], xm12
+    vextracti128    xm12, m12, 1
+    movq            [r2 + 16], xm12
+    movu            [r2 + r3], xm13
+    vextracti128    xm13, m13, 1
+    movq            [r2 + r3 + 16], xm13
+    movu            [r2 + r3 * 2], xm0
+    vextracti128    xm0, m0, 1
+    movq            [r2 + r3 * 2 + 16], xm0
+    movu            [r2 + r6], xm1
+    vextracti128    xm1, m1, 1
+    movq            [r2 + r6 + 16], xm1
+%endif
     RET
 %endif
+%endmacro
 
+FILTER_VER_LUMA_AVX2_12x16 pp
+FILTER_VER_LUMA_AVX2_12x16 ps
+
+%macro FILTER_VER_LUMA_AVX2_16x16 1
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_16x16, 4, 7, 15
+cglobal interp_8tap_vert_%1_16x16, 4, 7, 15
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -5591,8 +5874,13 @@ cglobal interp_8tap_vert_pp_16x16, 4, 7, 15
 
     lea             r4, [r1 * 3]
     sub             r0, r4
-    lea             r6, [r3 * 3]
+%ifidn %1,pp
     mova            m14, [pw_512]
+%else
+    add             r3d, r3d
+    vbroadcasti128  m14, [pw_2000]
+%endif
+    lea             r6, [r3 * 3]
 
     movu            xm0, [r0]                       ; m0 = row 0
     movu            xm1, [r0 + r1]                  ; m1 = row 1
@@ -5707,6 +5995,7 @@ cglobal interp_8tap_vert_pp_16x16, 4, 7, 15
     paddw           m9, m13
     pmaddubsw       m11, [r5]
 
+%ifidn %1,pp
     pmulhrsw        m0, m14                         ; m0 = word: row 0
     pmulhrsw        m1, m14                         ; m1 = word: row 1
     pmulhrsw        m2, m14                         ; m2 = word: row 2
@@ -5729,6 +6018,21 @@ cglobal interp_8tap_vert_pp_16x16, 4, 7, 15
     lea             r2, [r2 + r3 * 4]
     movu            [r2], xm4
     movu            [r2 + r3], xm5
+%else
+    psubw           m0, m14                         ; m0 = word: row 0
+    psubw           m1, m14                         ; m1 = word: row 1
+    psubw           m2, m14                         ; m2 = word: row 2
+    psubw           m3, m14                         ; m3 = word: row 3
+    psubw           m4, m14                         ; m4 = word: row 4
+    psubw           m5, m14                         ; m5 = word: row 5
+    movu            [r2], m0
+    movu            [r2 + r3], m1
+    movu            [r2 + r3 * 2], m2
+    movu            [r2 + r6], m3
+    lea             r2, [r2 + r3 * 4]
+    movu            [r2], m4
+    movu            [r2 + r3], m5
+%endif
 
     movu            xm13, [r0 + r1]                 ; m13 = row 13
     punpckhbw       xm0, xm12, xm13
@@ -5753,6 +6057,7 @@ cglobal interp_8tap_vert_pp_16x16, 4, 7, 15
     paddw           m11, m1
     pmaddubsw       m13, [r5]
 
+%ifidn %1,pp
     pmulhrsw        m6, m14                         ; m6 = word: row 6
     pmulhrsw        m7, m14                         ; m7 = word: row 7
     packuswb        m6, m7
@@ -5760,6 +6065,12 @@ cglobal interp_8tap_vert_pp_16x16, 4, 7, 15
     vextracti128    xm7, m6, 1
     movu            [r2 + r3 * 2], xm6
     movu            [r2 + r6], xm7
+%else
+    psubw           m6, m14                         ; m6 = word: row 6
+    psubw           m7, m14                         ; m7 = word: row 7
+    movu            [r2 + r3 * 2], m6
+    movu            [r2 + r6], m7
+%endif
     lea             r2, [r2 + r3 * 4]
 
     movu            xm1, [r0 + r4]                  ; m1 = row 15
@@ -5835,6 +6146,7 @@ cglobal interp_8tap_vert_pp_16x16, 4, 7, 15
     pmaddubsw       m7, [r5 + 3 * mmsize]
     paddw           m1, m7
 
+%ifidn %1,pp
     pmulhrsw        m8, m14                         ; m8 = word: row 8
     pmulhrsw        m9, m14                         ; m9 = word: row 9
     pmulhrsw        m10, m14                        ; m10 = word: row 10
@@ -5864,12 +6176,36 @@ cglobal interp_8tap_vert_pp_16x16, 4, 7, 15
     movu            [r2 + r3], xm13
     movu            [r2 + r3 * 2], xm0
     movu            [r2 + r6], xm1
+%else
+    psubw           m8, m14                         ; m8 = word: row 8
+    psubw           m9, m14                         ; m9 = word: row 9
+    psubw           m10, m14                        ; m10 = word: row 10
+    psubw           m11, m14                        ; m11 = word: row 11
+    psubw           m12, m14                        ; m12 = word: row 12
+    psubw           m13, m14                        ; m13 = word: row 13
+    psubw           m0, m14                         ; m0 = word: row 14
+    psubw           m1, m14                         ; m1 = word: row 15
+    movu            [r2], m8
+    movu            [r2 + r3], m9
+    movu            [r2 + r3 * 2], m10
+    movu            [r2 + r6], m11
+    lea             r2, [r2 + r3 * 4]
+    movu            [r2], m12
+    movu            [r2 + r3], m13
+    movu            [r2 + r3 * 2], m0
+    movu            [r2 + r6], m1
+%endif
     RET
 %endif
+%endmacro
 
+FILTER_VER_LUMA_AVX2_16x16 pp
+FILTER_VER_LUMA_AVX2_16x16 ps
+
+%macro FILTER_VER_LUMA_AVX2_16x12 1
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_16x12, 4, 7, 15
+cglobal interp_8tap_vert_%1_16x12, 4, 7, 15
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -5882,8 +6218,13 @@ cglobal interp_8tap_vert_pp_16x12, 4, 7, 15
 
     lea             r4, [r1 * 3]
     sub             r0, r4
-    lea             r6, [r3 * 3]
+%ifidn %1,pp
     mova            m14, [pw_512]
+%else
+    add             r3d, r3d
+    vbroadcasti128  m14, [pw_2000]
+%endif
+    lea             r6, [r3 * 3]
 
     movu            xm0, [r0]                       ; m0 = row 0
     movu            xm1, [r0 + r1]                  ; m1 = row 1
@@ -5998,6 +6339,7 @@ cglobal interp_8tap_vert_pp_16x12, 4, 7, 15
     paddw           m9, m13
     pmaddubsw       m11, [r5]
 
+%ifidn %1,pp
     pmulhrsw        m0, m14                         ; m0 = word: row 0
     pmulhrsw        m1, m14                         ; m1 = word: row 1
     pmulhrsw        m2, m14                         ; m2 = word: row 2
@@ -6020,6 +6362,21 @@ cglobal interp_8tap_vert_pp_16x12, 4, 7, 15
     lea             r2, [r2 + r3 * 4]
     movu            [r2], xm4
     movu            [r2 + r3], xm5
+%else
+    psubw           m0, m14                         ; m0 = word: row 0
+    psubw           m1, m14                         ; m1 = word: row 1
+    psubw           m2, m14                         ; m2 = word: row 2
+    psubw           m3, m14                         ; m3 = word: row 3
+    psubw           m4, m14                         ; m4 = word: row 4
+    psubw           m5, m14                         ; m5 = word: row 5
+    movu            [r2], m0
+    movu            [r2 + r3], m1
+    movu            [r2 + r3 * 2], m2
+    movu            [r2 + r6], m3
+    lea             r2, [r2 + r3 * 4]
+    movu            [r2], m4
+    movu            [r2 + r3], m5
+%endif
 
     movu            xm13, [r0 + r1]                 ; m13 = row 13
     punpckhbw       xm0, xm12, xm13
@@ -6042,6 +6399,7 @@ cglobal interp_8tap_vert_pp_16x12, 4, 7, 15
     pmaddubsw       m1, m13, [r5 + 1 * mmsize]
     paddw           m11, m1
 
+%ifidn %1,pp
     pmulhrsw        m6, m14                         ; m6 = word: row 6
     pmulhrsw        m7, m14                         ; m7 = word: row 7
     packuswb        m6, m7
@@ -6049,6 +6407,12 @@ cglobal interp_8tap_vert_pp_16x12, 4, 7, 15
     vextracti128    xm7, m6, 1
     movu            [r2 + r3 * 2], xm6
     movu            [r2 + r6], xm7
+%else
+    psubw           m6, m14                         ; m6 = word: row 6
+    psubw           m7, m14                         ; m7 = word: row 7
+    movu            [r2 + r3 * 2], m6
+    movu            [r2 + r6], m7
+%endif
     lea             r2, [r2 + r3 * 4]
 
     movu            xm1, [r0 + r4]                  ; m1 = row 15
@@ -6081,6 +6445,7 @@ cglobal interp_8tap_vert_pp_16x12, 4, 7, 15
     pmaddubsw       m5, m3, [r5 + 3 * mmsize]
     paddw           m11, m5
 
+%ifidn %1,pp
     pmulhrsw        m8, m14                         ; m8 = word: row 8
     pmulhrsw        m9, m14                         ; m9 = word: row 9
     pmulhrsw        m10, m14                        ; m10 = word: row 10
@@ -6095,27 +6460,43 @@ cglobal interp_8tap_vert_pp_16x12, 4, 7, 15
     movu            [r2 + r3], xm9
     movu            [r2 + r3 * 2], xm10
     movu            [r2 + r6], xm11
+%else
+    psubw           m8, m14                         ; m8 = word: row 8
+    psubw           m9, m14                         ; m9 = word: row 9
+    psubw           m10, m14                        ; m10 = word: row 10
+    psubw           m11, m14                        ; m11 = word: row 11
+    movu            [r2], m8
+    movu            [r2 + r3], m9
+    movu            [r2 + r3 * 2], m10
+    movu            [r2 + r6], m11
+%endif
     RET
 %endif
+%endmacro
 
+FILTER_VER_LUMA_AVX2_16x12 pp
+FILTER_VER_LUMA_AVX2_16x12 ps
+
+%macro FILTER_VER_LUMA_AVX2_16x8 1
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_16x8, 4, 7, 15
+cglobal interp_8tap_vert_%1_16x8, 4, 6, 15
     mov             r4d, r4m
     shl             r4d, 7
-
 %ifdef PIC
     lea             r5, [tab_LumaCoeffVer_32]
     add             r5, r4
 %else
     lea             r5, [tab_LumaCoeffVer_32 + r4]
 %endif
-
     lea             r4, [r1 * 3]
     sub             r0, r4
-    lea             r6, [r3 * 3]
+%ifidn %1,pp
     mova            m14, [pw_512]
-
+%else
+    add             r3d, r3d
+    vbroadcasti128  m14, [pw_2000]
+%endif
     movu            xm0, [r0]                       ; m0 = row 0
     movu            xm1, [r0 + r1]                  ; m1 = row 1
     punpckhbw       xm2, xm0, xm1
@@ -6220,7 +6601,8 @@ cglobal interp_8tap_vert_pp_16x8, 4, 7, 15
     paddw           m5, m13
     pmaddubsw       m13, m11, [r5 + 2 * mmsize]
     paddw           m7, m13
-
+    lea             r4, [r3 * 3]
+%ifidn %1,pp
     pmulhrsw        m0, m14                         ; m0 = word: row 0
     pmulhrsw        m1, m14                         ; m1 = word: row 1
     pmulhrsw        m2, m14                         ; m2 = word: row 2
@@ -6239,11 +6621,25 @@ cglobal interp_8tap_vert_pp_16x8, 4, 7, 15
     movu            [r2], xm0
     movu            [r2 + r3], xm1
     movu            [r2 + r3 * 2], xm2
-    movu            [r2 + r6], xm3
+    movu            [r2 + r4], xm3
     lea             r2, [r2 + r3 * 4]
     movu            [r2], xm4
     movu            [r2 + r3], xm5
-
+%else
+    psubw           m0, m14                         ; m0 = word: row 0
+    psubw           m1, m14                         ; m1 = word: row 1
+    psubw           m2, m14                         ; m2 = word: row 2
+    psubw           m3, m14                         ; m3 = word: row 3
+    psubw           m4, m14                         ; m4 = word: row 4
+    psubw           m5, m14                         ; m5 = word: row 5
+    movu            [r2], m0
+    movu            [r2 + r3], m1
+    movu            [r2 + r3 * 2], m2
+    movu            [r2 + r4], m3
+    lea             r2, [r2 + r3 * 4]
+    movu            [r2], m4
+    movu            [r2 + r3], m5
+%endif
     movu            xm13, [r0 + r1]                 ; m13 = row 13
     punpckhbw       xm0, xm12, xm13
     punpcklbw       xm12, xm13
@@ -6256,35 +6652,47 @@ cglobal interp_8tap_vert_pp_16x8, 4, 7, 15
     vinserti128     m13, m13, xm1, 1
     pmaddubsw       m1, m13, [r5 + 3 * mmsize]
     paddw           m7, m1
-
+%ifidn %1,pp
     pmulhrsw        m6, m14                         ; m6 = word: row 6
     pmulhrsw        m7, m14                         ; m7 = word: row 7
     packuswb        m6, m7
     vpermq          m6, m6, 11011000b
     vextracti128    xm7, m6, 1
     movu            [r2 + r3 * 2], xm6
-    movu            [r2 + r6], xm7
+    movu            [r2 + r4], xm7
+%else
+    psubw           m6, m14                         ; m6 = word: row 6
+    psubw           m7, m14                         ; m7 = word: row 7
+    movu            [r2 + r3 * 2], m6
+    movu            [r2 + r4], m7
+%endif
     RET
 %endif
+%endmacro
 
+FILTER_VER_LUMA_AVX2_16x8 pp
+FILTER_VER_LUMA_AVX2_16x8 ps
+
+%macro FILTER_VER_LUMA_AVX2_16x4 1
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_16x4, 4, 7, 13
+cglobal interp_8tap_vert_%1_16x4, 4, 6, 13
     mov             r4d, r4m
     shl             r4d, 7
-
 %ifdef PIC
     lea             r5, [tab_LumaCoeffVer_32]
     add             r5, r4
 %else
     lea             r5, [tab_LumaCoeffVer_32 + r4]
 %endif
-
     lea             r4, [r1 * 3]
     sub             r0, r4
-    lea             r6, [r3 * 3]
+%ifidn %1,pp
     mova            m12, [pw_512]
-
+%else
+    add             r3d, r3d
+    vbroadcasti128  m12, [pw_2000]
+%endif
     movu            xm0, [r0]                       ; m0 = row 0
     movu            xm1, [r0 + r1]                  ; m1 = row 1
     punpckhbw       xm2, xm0, xm1
@@ -6356,7 +6764,7 @@ cglobal interp_8tap_vert_pp_16x4, 4, 7, 13
     vinserti128     m9, m9, xm11, 1
     pmaddubsw       m11, m9, [r5 + 3 * mmsize]
     paddw           m3, m11
-
+%ifidn %1,pp
     pmulhrsw        m0, m12                         ; m0 = word: row 0
     pmulhrsw        m1, m12                         ; m1 = word: row 1
     pmulhrsw        m2, m12                         ; m2 = word: row 2
@@ -6370,14 +6778,29 @@ cglobal interp_8tap_vert_pp_16x4, 4, 7, 13
     movu            [r2], xm0
     movu            [r2 + r3], xm1
     movu            [r2 + r3 * 2], xm2
-    movu            [r2 + r6], xm3
+    lea             r4, [r3 * 3]
+    movu            [r2 + r4], xm3
+%else
+    psubw           m0, m12                         ; m0 = word: row 0
+    psubw           m1, m12                         ; m1 = word: row 1
+    psubw           m2, m12                         ; m2 = word: row 2
+    psubw           m3, m12                         ; m3 = word: row 3
+    movu            [r2], m0
+    movu            [r2 + r3], m1
+    movu            [r2 + r3 * 2], m2
+    lea             r4, [r3 * 3]
+    movu            [r2 + r4], m3
+%endif
     RET
 %endif
+%endmacro
 
-%macro FILTER_VER_LUMA_AVX2_16xN 2
+FILTER_VER_LUMA_AVX2_16x4 pp
+FILTER_VER_LUMA_AVX2_16x4 ps
+%macro FILTER_VER_LUMA_AVX2_16xN 3
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_%1x%2, 4, 9, 15
+cglobal interp_8tap_vert_%3_%1x%2, 4, 9, 15
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -6390,9 +6813,14 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 9, 15
 
     lea             r4, [r1 * 3]
     sub             r0, r4
+%ifidn %3,ps
+    add             r3d, r3d
+    vbroadcasti128  m14, [pw_2000]
+%else
+    mova            m14, [pw_512]
+%endif
     lea             r6, [r3 * 3]
     lea             r7, [r1 * 4]
-    mova            m14, [pw_512]
     mov             r8d, %2 / 16
 
 .loop:
@@ -6509,6 +6937,7 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 9, 15
     paddw           m9, m13
     pmaddubsw       m11, [r5]
 
+%ifidn %3,pp
     pmulhrsw        m0, m14                         ; m0 = word: row 0
     pmulhrsw        m1, m14                         ; m1 = word: row 1
     pmulhrsw        m2, m14                         ; m2 = word: row 2
@@ -6531,6 +6960,21 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 9, 15
     lea             r2, [r2 + r3 * 4]
     movu            [r2], xm4
     movu            [r2 + r3], xm5
+%else
+    psubw           m0, m14                         ; m0 = word: row 0
+    psubw           m1, m14                         ; m1 = word: row 1
+    psubw           m2, m14                         ; m2 = word: row 2
+    psubw           m3, m14                         ; m3 = word: row 3
+    psubw           m4, m14                         ; m4 = word: row 4
+    psubw           m5, m14                         ; m5 = word: row 5
+    movu            [r2], m0
+    movu            [r2 + r3], m1
+    movu            [r2 + r3 * 2], m2
+    movu            [r2 + r6], m3
+    lea             r2, [r2 + r3 * 4]
+    movu            [r2], m4
+    movu            [r2 + r3], m5
+%endif
 
     movu            xm13, [r0 + r1]                 ; m13 = row 13
     punpckhbw       xm0, xm12, xm13
@@ -6555,6 +6999,7 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 9, 15
     paddw           m11, m1
     pmaddubsw       m13, [r5]
 
+%ifidn %3,pp
     pmulhrsw        m6, m14                         ; m6 = word: row 6
     pmulhrsw        m7, m14                         ; m7 = word: row 7
     packuswb        m6, m7
@@ -6562,6 +7007,13 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 9, 15
     vextracti128    xm7, m6, 1
     movu            [r2 + r3 * 2], xm6
     movu            [r2 + r6], xm7
+%else
+    psubw           m6, m14                         ; m6 = word: row 6
+    psubw           m7, m14                         ; m7 = word: row 7
+    movu            [r2 + r3 * 2], m6
+    movu            [r2 + r6], m7
+%endif
+
     lea             r2, [r2 + r3 * 4]
 
     movu            xm1, [r0 + r4]                  ; m1 = row 15
@@ -6637,6 +7089,7 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 9, 15
     pmaddubsw       m7, [r5 + 3 * mmsize]
     paddw           m1, m7
 
+%ifidn %3,pp
     pmulhrsw        m8, m14                         ; m8 = word: row 8
     pmulhrsw        m9, m14                         ; m9 = word: row 9
     pmulhrsw        m10, m14                        ; m10 = word: row 10
@@ -6666,6 +7119,26 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 9, 15
     movu            [r2 + r3], xm13
     movu            [r2 + r3 * 2], xm0
     movu            [r2 + r6], xm1
+%else
+    psubw           m8, m14                         ; m8 = word: row 8
+    psubw           m9, m14                         ; m9 = word: row 9
+    psubw           m10, m14                        ; m10 = word: row 10
+    psubw           m11, m14                        ; m11 = word: row 11
+    psubw           m12, m14                        ; m12 = word: row 12
+    psubw           m13, m14                        ; m13 = word: row 13
+    psubw           m0, m14                         ; m0 = word: row 14
+    psubw           m1, m14                         ; m1 = word: row 15
+    movu            [r2], m8
+    movu            [r2 + r3], m9
+    movu            [r2 + r3 * 2], m10
+    movu            [r2 + r6], m11
+    lea             r2, [r2 + r3 * 4]
+    movu            [r2], m12
+    movu            [r2 + r3], m13
+    movu            [r2 + r3 * 2], m0
+    movu            [r2 + r6], m1
+%endif
+
     lea             r2, [r2 + r3 * 4]
     sub             r0, r7
     dec             r8d
@@ -6674,10 +7147,12 @@ cglobal interp_8tap_vert_pp_%1x%2, 4, 9, 15
 %endif
 %endmacro
 
-FILTER_VER_LUMA_AVX2_16xN 16, 32
-FILTER_VER_LUMA_AVX2_16xN 16, 64
+FILTER_VER_LUMA_AVX2_16xN 16, 32, pp
+FILTER_VER_LUMA_AVX2_16xN 16, 64, pp
+FILTER_VER_LUMA_AVX2_16xN 16, 32, ps
+FILTER_VER_LUMA_AVX2_16xN 16, 64, ps
 
-%macro PROCESS_LUMA_AVX2_W16_16R 0
+%macro PROCESS_LUMA_AVX2_W16_16R 1
     movu            xm0, [r0]                       ; m0 = row 0
     movu            xm1, [r0 + r1]                  ; m1 = row 1
     punpckhbw       xm2, xm0, xm1
@@ -6791,6 +7266,7 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     paddw           m9, m13
     pmaddubsw       m11, [r5]
 
+%ifidn %1,pp
     pmulhrsw        m0, m14                         ; m0 = word: row 0
     pmulhrsw        m1, m14                         ; m1 = word: row 1
     pmulhrsw        m2, m14                         ; m2 = word: row 2
@@ -6813,6 +7289,21 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     lea             r8, [r2 + r3 * 4]
     movu            [r8], xm4
     movu            [r8 + r3], xm5
+%else
+    psubw           m0, m14                         ; m0 = word: row 0
+    psubw           m1, m14                         ; m1 = word: row 1
+    psubw           m2, m14                         ; m2 = word: row 2
+    psubw           m3, m14                         ; m3 = word: row 3
+    psubw           m4, m14                         ; m4 = word: row 4
+    psubw           m5, m14                         ; m5 = word: row 5
+    movu            [r2], m0
+    movu            [r2 + r3], m1
+    movu            [r2 + r3 * 2], m2
+    movu            [r2 + r6], m3
+    lea             r8, [r2 + r3 * 4]
+    movu            [r8], m4
+    movu            [r8 + r3], m5
+%endif
 
     movu            xm13, [r7 + r1]                 ; m13 = row 13
     punpckhbw       xm0, xm12, xm13
@@ -6837,6 +7328,7 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     paddw           m11, m1
     pmaddubsw       m13, [r5]
 
+%ifidn %1,pp
     pmulhrsw        m6, m14                         ; m6 = word: row 6
     pmulhrsw        m7, m14                         ; m7 = word: row 7
     packuswb        m6, m7
@@ -6844,6 +7336,13 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     vextracti128    xm7, m6, 1
     movu            [r8 + r3 * 2], xm6
     movu            [r8 + r6], xm7
+%else
+    psubw           m6, m14                         ; m6 = word: row 6
+    psubw           m7, m14                         ; m7 = word: row 7
+    movu            [r8 + r3 * 2], m6
+    movu            [r8 + r6], m7
+%endif
+
     lea             r8, [r8 + r3 * 4]
 
     movu            xm1, [r7 + r4]                  ; m1 = row 15
@@ -6919,6 +7418,7 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     pmaddubsw       m7, [r5 + 3 * mmsize]
     paddw           m1, m7
 
+%ifidn %1,pp
     pmulhrsw        m8, m14                         ; m8 = word: row 8
     pmulhrsw        m9, m14                         ; m9 = word: row 9
     pmulhrsw        m10, m14                        ; m10 = word: row 10
@@ -6948,9 +7448,28 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     movu            [r8 + r3], xm13
     movu            [r8 + r3 * 2], xm0
     movu            [r8 + r6], xm1
+%else
+    psubw           m8, m14                         ; m8 = word: row 8
+    psubw           m9, m14                         ; m9 = word: row 9
+    psubw           m10, m14                        ; m10 = word: row 10
+    psubw           m11, m14                        ; m11 = word: row 11
+    psubw           m12, m14                        ; m12 = word: row 12
+    psubw           m13, m14                        ; m13 = word: row 13
+    psubw           m0, m14                         ; m0 = word: row 14
+    psubw           m1, m14                         ; m1 = word: row 15
+    movu            [r8], m8
+    movu            [r8 + r3], m9
+    movu            [r8 + r3 * 2], m10
+    movu            [r8 + r6], m11
+    lea             r8, [r8 + r3 * 4]
+    movu            [r8], m12
+    movu            [r8 + r3], m13
+    movu            [r8 + r3 * 2], m0
+    movu            [r8 + r6], m1
+%endif
 %endmacro
 
-%macro PROCESS_LUMA_AVX2_W16_8R 0
+%macro PROCESS_LUMA_AVX2_W16_8R 1
     movu            xm0, [r0]                       ; m0 = row 0
     movu            xm1, [r0 + r1]                  ; m1 = row 1
     punpckhbw       xm2, xm0, xm1
@@ -7056,6 +7575,7 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     pmaddubsw       m13, m11, [r5 + 2 * mmsize]
     paddw           m7, m13
 
+%ifidn %1,pp
     pmulhrsw        m0, m14                         ; m0 = word: row 0
     pmulhrsw        m1, m14                         ; m1 = word: row 1
     pmulhrsw        m2, m14                         ; m2 = word: row 2
@@ -7078,6 +7598,21 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     lea             r8, [r2 + r3 * 4]
     movu            [r8], xm4
     movu            [r8 + r3], xm5
+%else
+    psubw           m0, m14                         ; m0 = word: row 0
+    psubw           m1, m14                         ; m1 = word: row 1
+    psubw           m2, m14                         ; m2 = word: row 2
+    psubw           m3, m14                         ; m3 = word: row 3
+    psubw           m4, m14                         ; m4 = word: row 4
+    psubw           m5, m14                         ; m5 = word: row 5
+    movu            [r2], m0
+    movu            [r2 + r3], m1
+    movu            [r2 + r3 * 2], m2
+    movu            [r2 + r6], m3
+    lea             r8, [r2 + r3 * 4]
+    movu            [r8], m4
+    movu            [r8 + r3], m5
+%endif
 
     movu            xm13, [r7 + r1]                 ; m13 = row 13
     punpckhbw       xm0, xm12, xm13
@@ -7092,6 +7627,7 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     pmaddubsw       m1, m13, [r5 + 3 * mmsize]
     paddw           m7, m1
 
+%ifidn %1,pp
     pmulhrsw        m6, m14                         ; m6 = word: row 6
     pmulhrsw        m7, m14                         ; m7 = word: row 7
     packuswb        m6, m7
@@ -7099,32 +7635,45 @@ FILTER_VER_LUMA_AVX2_16xN 16, 64
     vextracti128    xm7, m6, 1
     movu            [r8 + r3 * 2], xm6
     movu            [r8 + r6], xm7
+%else
+    psubw           m6, m14                         ; m6 = word: row 6
+    psubw           m7, m14                         ; m7 = word: row 7
+    movu            [r8 + r3 * 2], m6
+    movu            [r8 + r6], m7
+%endif
 %endmacro
 
+%macro FILTER_VER_LUMA_AVX2_24x32 1
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_24x32, 4, 11, 15
+cglobal interp_8tap_vert_%1_24x32, 4, 11, 15
     mov             r4d, r4m
     shl             r4d, 7
-
 %ifdef PIC
     lea             r5, [tab_LumaCoeffVer_32]
     add             r5, r4
 %else
     lea             r5, [tab_LumaCoeffVer_32 + r4]
 %endif
-
     lea             r4, [r1 * 3]
     sub             r0, r4
+%ifidn %1,ps
+    add             r3d, r3d
+    vbroadcasti128  m14, [pw_2000]
+%else
+    mova            m14, [pw_512]
+%endif
     lea             r6, [r3 * 3]
     lea             r10, [r1 * 4]
-    mova            m14, [pw_512]
     mov             r9d, 2
 .loopH:
-    PROCESS_LUMA_AVX2_W16_16R
+    PROCESS_LUMA_AVX2_W16_16R %1
+%ifidn %1,pp
     add             r2, 16
+%else
+    add             r2, 32
+%endif
     add             r0, 16
-
     movq            xm1, [r0]                       ; m1 = row 0
     movq            xm2, [r0 + r1]                  ; m2 = row 1
     punpcklbw       xm1, xm2
@@ -7243,7 +7792,7 @@ cglobal interp_8tap_vert_pp_24x32, 4, 11, 15
     vinserti128     m9, m9, xm3, 1
     pmaddubsw       m3, m9, [r5 + 3 * mmsize]
     paddw           m8, m3
-
+%ifidn %1,pp
     pmulhrsw        m5, m14                         ; m5 = word: row 0, row 1
     pmulhrsw        m2, m14                         ; m2 = word: row 2, row 3
     pmulhrsw        m1, m14                         ; m1 = word: row 4, row 5
@@ -7279,58 +7828,116 @@ cglobal interp_8tap_vert_pp_24x32, 4, 11, 15
     movq            [r8 + r3], xm8
     movhps          [r8 + r3 * 2], xm7
     movhps          [r8 + r6], xm8
-
+%else
+    psubw           m5, m14                         ; m5 = word: row 0, row 1
+    psubw           m2, m14                         ; m2 = word: row 2, row 3
+    psubw           m1, m14                         ; m1 = word: row 4, row 5
+    psubw           m4, m14                         ; m4 = word: row 6, row 7
+    psubw           m0, m14                         ; m0 = word: row 8, row 9
+    psubw           m6, m14                         ; m6 = word: row 10, row 11
+    psubw           m7, m14                         ; m7 = word: row 12, row 13
+    psubw           m8, m14                         ; m8 = word: row 14, row 15
+    vextracti128    xm3, m5, 1
+    movu            [r2], xm5
+    movu            [r2 + r3], xm3
+    vextracti128    xm3, m2, 1
+    movu            [r2 + r3 * 2], xm2
+    movu            [r2 + r6], xm3
+    vextracti128    xm3, m1, 1
+    lea             r8, [r2 + r3 * 4]
+    movu            [r8], xm1
+    movu            [r8 + r3], xm3
+    vextracti128    xm3, m4, 1
+    movu            [r8 + r3 * 2], xm4
+    movu            [r8 + r6], xm3
+    vextracti128    xm3, m0, 1
+    lea             r8, [r8 + r3 * 4]
+    movu            [r8], xm0
+    movu            [r8 + r3], xm3
+    vextracti128    xm3, m6, 1
+    movu            [r8 + r3 * 2], xm6
+    movu            [r8 + r6], xm3
+    vextracti128    xm3, m7, 1
+    lea             r8, [r8 + r3 * 4]
+    movu            [r8], xm7
+    movu            [r8 + r3], xm3
+    vextracti128    xm3, m8, 1
+    movu            [r8 + r3 * 2], xm8
+    movu            [r8 + r6], xm3
+%endif
     sub             r7, r10
     lea             r0, [r7 - 16]
+%ifidn %1,pp
     lea             r2, [r8 + r3 * 4 - 16]
-    dec             r9d
-    jnz             .loopH
-    RET
-%endif
-
-%macro FILTER_VER_LUMA_AVX2_32xN 2
-INIT_YMM avx2
-%if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_%1x%2, 4, 12, 15
-    mov             r4d, r4m
-    shl             r4d, 7
-
-%ifdef PIC
-    lea             r5, [tab_LumaCoeffVer_32]
-    add             r5, r4
 %else
-    lea             r5, [tab_LumaCoeffVer_32 + r4]
+    lea             r2, [r8 + r3 * 4 - 32]
 %endif
-
-    lea             r4, [r1 * 3]
-    sub             r0, r4
-    lea             r6, [r3 * 3]
-    lea             r11, [r1 * 4]
-    mova            m14, [pw_512]
-    mov             r9d, %2 / 16
-.loopH:
-    mov             r10d, %1 / 16
-.loopW:
-    PROCESS_LUMA_AVX2_W16_16R
-    add             r2, 16
-    add             r0, 16
-    dec             r10d
-    jnz             .loopW
-    sub             r7, r11
-    lea             r0, [r7 - 16]
-    lea             r2, [r8 + r3 * 4 - 16]
     dec             r9d
     jnz             .loopH
     RET
 %endif
 %endmacro
 
-FILTER_VER_LUMA_AVX2_32xN 32, 32
-FILTER_VER_LUMA_AVX2_32xN 32, 64
+FILTER_VER_LUMA_AVX2_24x32 pp
+FILTER_VER_LUMA_AVX2_24x32 ps
 
+%macro FILTER_VER_LUMA_AVX2_32xN 3
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_32x16, 4, 10, 15
+cglobal interp_8tap_vert_%3_%1x%2, 4, 12, 15
+    mov             r4d, r4m
+    shl             r4d, 7
+%ifdef PIC
+    lea             r5, [tab_LumaCoeffVer_32]
+    add             r5, r4
+%else
+    lea             r5, [tab_LumaCoeffVer_32 + r4]
+%endif
+    lea             r4, [r1 * 3]
+    sub             r0, r4
+%ifidn %3,ps
+    add             r3d, r3d
+    vbroadcasti128  m14, [pw_2000]
+%else
+    mova            m14, [pw_512]
+%endif
+    lea             r6, [r3 * 3]
+    lea             r11, [r1 * 4]
+    mov             r9d, %2 / 16
+.loopH:
+    mov             r10d, %1 / 16
+.loopW:
+    PROCESS_LUMA_AVX2_W16_16R %3
+%ifidn %3,pp
+    add             r2, 16
+%else
+    add             r2, 32
+%endif
+    add             r0, 16
+    dec             r10d
+    jnz             .loopW
+    sub             r7, r11
+    lea             r0, [r7 - 16]
+%ifidn %3,pp
+    lea             r2, [r8 + r3 * 4 - 16]
+%else
+    lea             r2, [r8 + r3 * 4 - 32]
+%endif
+    dec             r9d
+    jnz             .loopH
+    RET
+%endif
+%endmacro
+
+FILTER_VER_LUMA_AVX2_32xN 32, 32, pp
+FILTER_VER_LUMA_AVX2_32xN 32, 64, pp
+FILTER_VER_LUMA_AVX2_32xN 32, 32, ps
+FILTER_VER_LUMA_AVX2_32xN 32, 64, ps
+
+%macro FILTER_VER_LUMA_AVX2_32x16 1
+INIT_YMM avx2
+%if ARCH_X86_64 == 1
+cglobal interp_8tap_vert_%1_32x16, 4, 10, 15
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -7343,59 +7950,95 @@ cglobal interp_8tap_vert_pp_32x16, 4, 10, 15
 
     lea             r4, [r1 * 3]
     sub             r0, r4
-    lea             r6, [r3 * 3]
+%ifidn %1,ps
+    add             r3d, r3d
+    vbroadcasti128  m14, [pw_2000]
+%else
     mova            m14, [pw_512]
+%endif
+    lea             r6, [r3 * 3]
     mov             r9d, 2
 .loopW:
-    PROCESS_LUMA_AVX2_W16_16R
+    PROCESS_LUMA_AVX2_W16_16R %1
+%ifidn %1,pp
     add             r2, 16
+%else
+    add             r2, 32
+%endif
     add             r0, 16
     dec             r9d
     jnz             .loopW
     RET
 %endif
+%endmacro
 
+FILTER_VER_LUMA_AVX2_32x16 pp
+FILTER_VER_LUMA_AVX2_32x16 ps
+ 
+%macro FILTER_VER_LUMA_AVX2_32x24 1
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_32x24, 4, 10, 15
+cglobal interp_8tap_vert_%1_32x24, 4, 10, 15
     mov             r4d, r4m
     shl             r4d, 7
-
 %ifdef PIC
     lea             r5, [tab_LumaCoeffVer_32]
     add             r5, r4
 %else
     lea             r5, [tab_LumaCoeffVer_32 + r4]
 %endif
-
     lea             r4, [r1 * 3]
     sub             r0, r4
+%ifidn %1,ps
+    add             r3d, r3d
+%endif
     lea             r6, [r3 * 3]
+%ifidn %1,pp
     mova            m14, [pw_512]
+%else
+    vbroadcasti128  m14, [pw_2000]
+%endif
     mov             r9d, 2
 .loopW:
-    PROCESS_LUMA_AVX2_W16_16R
+    PROCESS_LUMA_AVX2_W16_16R %1
+%ifidn %1,pp
     add             r2, 16
+%else
+    add             r2, 32
+%endif
     add             r0, 16
     dec             r9d
     jnz             .loopW
     lea             r9, [r1 * 4]
     sub             r7, r9
     lea             r0, [r7 - 16]
+%ifidn %1,pp
     lea             r2, [r8 + r3 * 4 - 16]
+%else
+    lea             r2, [r8 + r3 * 4 - 32]
+%endif
     mov             r9d, 2
 .loop:
-    PROCESS_LUMA_AVX2_W16_8R
+    PROCESS_LUMA_AVX2_W16_8R %1
+%ifidn %1,pp
     add             r2, 16
+%else
+    add             r2, 32
+%endif
     add             r0, 16
     dec             r9d
     jnz             .loop
     RET
 %endif
+%endmacro
 
+FILTER_VER_LUMA_AVX2_32x24 pp
+FILTER_VER_LUMA_AVX2_32x24 ps
+
+%macro FILTER_VER_LUMA_AVX2_32x8 1
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_32x8, 4, 10, 15
+cglobal interp_8tap_vert_%1_32x8, 4, 10, 15
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -7408,21 +8051,37 @@ cglobal interp_8tap_vert_pp_32x8, 4, 10, 15
 
     lea             r4, [r1 * 3]
     sub             r0, r4
+%ifidn %1,ps
+    add             r3d, r3d
+%endif
     lea             r6, [r3 * 3]
+%ifidn %1,pp
     mova            m14, [pw_512]
+%else
+    vbroadcasti128  m14, [pw_2000]
+%endif
     mov             r9d, 2
 .loopW:
-    PROCESS_LUMA_AVX2_W16_8R
+    PROCESS_LUMA_AVX2_W16_8R %1
+%ifidn %1,pp
     add             r2, 16
+%else
+    add             r2, 32
+%endif
     add             r0, 16
     dec             r9d
     jnz             .loopW
     RET
 %endif
+%endmacro
 
+FILTER_VER_LUMA_AVX2_32x8 pp
+FILTER_VER_LUMA_AVX2_32x8 ps
+
+%macro FILTER_VER_LUMA_AVX2_48x64 1
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_48x64, 4, 12, 15
+cglobal interp_8tap_vert_%1_48x64, 4, 12, 15
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -7435,70 +8094,53 @@ cglobal interp_8tap_vert_pp_48x64, 4, 12, 15
 
     lea             r4, [r1 * 3]
     sub             r0, r4
+
+%ifidn %1,ps
+    add             r3d, r3d
+%endif
+
     lea             r6, [r3 * 3]
     lea             r11, [r1 * 4]
+
+%ifidn %1,pp
     mova            m14, [pw_512]
+%else
+    vbroadcasti128  m14, [pw_2000]
+%endif
+
     mov             r9d, 4
 .loopH:
     mov             r10d, 3
 .loopW:
-    PROCESS_LUMA_AVX2_W16_16R
+    PROCESS_LUMA_AVX2_W16_16R %1
+%ifidn %1,pp
     add             r2, 16
+%else
+    add             r2, 32
+%endif
     add             r0, 16
     dec             r10d
     jnz             .loopW
     sub             r7, r11
     lea             r0, [r7 - 32]
+%ifidn %1,pp
     lea             r2, [r8 + r3 * 4 - 32]
-    dec             r9d
-    jnz             .loopH
-    RET
-%endif
-
-%macro FILTER_VER_LUMA_AVX2_64xN 2
-INIT_YMM avx2
-%if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_%1x%2, 4, 12, 15
-    mov             r4d, r4m
-    shl             r4d, 7
-
-%ifdef PIC
-    lea             r5, [tab_LumaCoeffVer_32]
-    add             r5, r4
 %else
-    lea             r5, [tab_LumaCoeffVer_32 + r4]
+    lea             r2, [r8 + r3 * 4 - 64]
 %endif
-
-    lea             r4, [r1 * 3]
-    sub             r0, r4
-    lea             r6, [r3 * 3]
-    lea             r11, [r1 * 4]
-    mova            m14, [pw_512]
-    mov             r9d, %2 / 16
-.loopH:
-    mov             r10d, %1 / 16
-.loopW:
-    PROCESS_LUMA_AVX2_W16_16R
-    add             r2, 16
-    add             r0, 16
-    dec             r10d
-    jnz             .loopW
-    sub             r7, r11
-    lea             r0, [r7 - 48]
-    lea             r2, [r8 + r3 * 4 - 48]
     dec             r9d
     jnz             .loopH
     RET
 %endif
 %endmacro
 
-FILTER_VER_LUMA_AVX2_64xN 64, 32
-FILTER_VER_LUMA_AVX2_64xN 64, 48
-FILTER_VER_LUMA_AVX2_64xN 64, 64
+FILTER_VER_LUMA_AVX2_48x64 pp
+FILTER_VER_LUMA_AVX2_48x64 ps
 
+%macro FILTER_VER_LUMA_AVX2_64xN 3
 INIT_YMM avx2
 %if ARCH_X86_64 == 1
-cglobal interp_8tap_vert_pp_64x16, 4, 10, 15
+cglobal interp_8tap_vert_%3_%1x%2, 4, 12, 15
     mov             r4d, r4m
     shl             r4d, 7
 
@@ -7511,17 +8153,99 @@ cglobal interp_8tap_vert_pp_64x16, 4, 10, 15
 
     lea             r4, [r1 * 3]
     sub             r0, r4
+
+%ifidn %3,ps
+    add             r3d, r3d
+%endif
+
     lea             r6, [r3 * 3]
+    lea             r11, [r1 * 4]
+
+%ifidn %3,pp
     mova            m14, [pw_512]
+%else
+    vbroadcasti128  m14, [pw_2000]
+%endif
+
+    mov             r9d, %2 / 16
+.loopH:
+    mov             r10d, %1 / 16
+.loopW:
+    PROCESS_LUMA_AVX2_W16_16R %3
+%ifidn %3,pp
+    add             r2, 16
+%else
+    add             r2, 32
+%endif
+    add             r0, 16
+    dec             r10d
+    jnz             .loopW
+    sub             r7, r11
+    lea             r0, [r7 - 48]
+%ifidn %3,pp
+    lea             r2, [r8 + r3 * 4 - 48]
+%else
+    lea             r2, [r8 + r3 * 4 - 96]
+%endif
+    dec             r9d
+    jnz             .loopH
+    RET
+%endif
+%endmacro
+
+FILTER_VER_LUMA_AVX2_64xN 64, 32, pp
+FILTER_VER_LUMA_AVX2_64xN 64, 48, pp
+FILTER_VER_LUMA_AVX2_64xN 64, 64, pp
+FILTER_VER_LUMA_AVX2_64xN 64, 32, ps
+FILTER_VER_LUMA_AVX2_64xN 64, 48, ps
+FILTER_VER_LUMA_AVX2_64xN 64, 64, ps
+
+%macro FILTER_VER_LUMA_AVX2_64x16 1
+INIT_YMM avx2
+%if ARCH_X86_64 == 1
+cglobal interp_8tap_vert_%1_64x16, 4, 10, 15
+    mov             r4d, r4m
+    shl             r4d, 7
+
+%ifdef PIC
+    lea             r5, [tab_LumaCoeffVer_32]
+    add             r5, r4
+%else
+    lea             r5, [tab_LumaCoeffVer_32 + r4]
+%endif
+
+    lea             r4, [r1 * 3]
+    sub             r0, r4
+
+%ifidn %1,ps
+    add             r3d, r3d
+%endif
+
+    lea             r6, [r3 * 3]
+
+%ifidn %1,pp
+    mova            m14, [pw_512]
+%else
+    vbroadcasti128  m14, [pw_2000]
+%endif
+
     mov             r9d, 4
 .loopW:
-    PROCESS_LUMA_AVX2_W16_16R
+    PROCESS_LUMA_AVX2_W16_16R %1
+%ifidn %1,pp
     add             r2, 16
+%else
+    add             r2, 32
+%endif
     add             r0, 16
     dec             r9d
     jnz             .loopW
     RET
 %endif
+%endmacro
+
+FILTER_VER_LUMA_AVX2_64x16 pp
+FILTER_VER_LUMA_AVX2_64x16 ps
 
 ;-------------------------------------------------------------------------------------------------------------
 ; void interp_8tap_vert_%3_%1x%2(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx)
