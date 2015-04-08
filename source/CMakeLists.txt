@@ -30,7 +30,7 @@ option(STATIC_LINK_CRT "Statically link C runtime for release builds" OFF)
 mark_as_advanced(FPROFILE_USE FPROFILE_GENERATE NATIVE_BUILD)
 
 # X265_BUILD must be incremented each time the public API is changed
-set(X265_BUILD 51)
+set(X265_BUILD 54)
 configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
                "${PROJECT_BINARY_DIR}/x265.def")
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
@@ -196,6 +196,7 @@ if(GCC)
         add_definitions(-static)
         list(APPEND LINKER_OPTIONS "-static")
     endif(STATIC_LINK_CRT)
+    check_cxx_compiler_flag(-Wno-strict-overflow CC_HAS_NO_STRICT_OVERFLOW)
     check_cxx_compiler_flag(-Wno-narrowing CC_HAS_NO_NARROWING) 
     check_cxx_compiler_flag(-Wno-array-bounds CC_HAS_NO_ARRAY_BOUNDS) 
     if (CC_HAS_NO_ARRAY_BOUNDS)
