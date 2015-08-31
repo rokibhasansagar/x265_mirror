@@ -132,6 +132,7 @@ typedef struct x265_frame_stats
     double           avgLumaDistortion;
     double           avgChromaDistortion;
     double           avgPsyEnergy;
+    double           avgResEnergy;
     double           avgLumaLevel;
     uint64_t         bits;
     int              encoderOrder;
@@ -141,6 +142,7 @@ typedef struct x265_frame_stats
     int              list1POC[16];
     uint16_t         maxLumaLevel;
     char             sliceType;
+    bool             bScenecut;
     x265_cu_stats    cuStats;
 } x265_frame_stats;
 
@@ -204,6 +206,13 @@ typedef struct x265_picture
      * member pointers are valid, the encoder will write output analysis into
      * this data structure */
     x265_analysis_data analysisData;
+
+    /* An array of quantizer offsets to be applied to this image during encoding.
+     * These are added on top of the decisions made by rateControl.
+     * Adaptive quantization must be enabled to use this feature. These quantizer 
+     * offsets should be given for each 16x16 block. Behavior if quant
+     * offsets differ between encoding passes is undefined. */
+    float            *quantOffsets;
 
     /* Frame level statistics */
     x265_frame_stats frameData;
@@ -378,6 +387,8 @@ typedef struct x265_stats
     x265_sliceType_stats  statsI;               /* statistics of I slice */
     x265_sliceType_stats  statsP;               /* statistics of P slice */
     x265_sliceType_stats  statsB;               /* statistics of B slice */
+    uint16_t              maxCLL;               /* maximum content light level */
+    uint16_t              maxFALL;              /* maximum frame average light level */
 } x265_stats;
 
 /* String values accepted by x265_param_parse() (and CLI) for various parameters */
@@ -1172,6 +1183,16 @@ typedef struct x265_param
      * picture average light level (or 0). */
     const char* contentLightLevelInfo;
 
+    /* Minimum luma level of input source picture, specified as a integer which
+     * would automatically increase any luma values below the specified --min-luma
+     * value to that value. */
+    uint16_t minLuma;
+
+    /* Maximum luma level of input source picture, specified as a integer which
+     * would automatically decrease any luma values above the specified --max-luma
+     * value to that value. */
+    uint16_t maxLuma;
+
 } x265_param;
 
 /* x265_param_alloc:
@@ -1211,7 +1232,7 @@ static const char * const x265_profile_names[] = {
     "main422-10", "main422-10-intra",
     "main444-10", "main444-10-intra",
 
-    "main12",     "main12-intra",                  /* Highly Experimental */
+    "main12",     "main12-intra",
     "main422-12", "main422-12-intra",
     "main444-12", "main444-12-intra",
 
