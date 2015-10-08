@@ -2,11 +2,13 @@
 ;* ssd-a.asm: x86 ssd functions
 ;*****************************************************************************
 ;* Copyright (C) 2003-2013 x264 project
+;* Copyright (C) 2013-2015 x265 project
 ;*
 ;* Authors: Loren Merritt <lorenm@u.washington.edu>
 ;*          Fiona Glaser <fiona@x264.com>
 ;*          Laurent Aimar <fenrir@via.ecp.fr>
 ;*          Alex Izvorski <aizvorksi@gmail.com>
+;*          Min Chen <chenm003@163.com>
 ;*
 ;* This program is free software; you can redistribute it and/or modify
 ;* it under the terms of the GNU General Public License as published by
@@ -105,8 +107,20 @@ cglobal pixel_ssd_ss_%1x%2, 4,7,8
     dec    r4d
     jg .loop
 %endif
+
+%if BIT_DEPTH == 12 && mmsize == 16
+    movu        m5, m0
+    pxor        m6, m6
+    punpckldq   m0, m6
+    punpckhdq   m5, m6
+    paddq       m0, m5
+    movhlps     m5, m0
+    paddq       m0, m5
+    movq        r6, xm0
+%else 
     HADDD   m0, m5
-    movd   eax, xm0
+    movd    eax,xm0
+%endif
 %ifidn movu,movq ; detect MMX
     EMMS
 %endif

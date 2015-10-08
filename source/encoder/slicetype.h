@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Steve Borho <steve@borho.org>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -103,22 +104,14 @@ public:
     PicList       m_outputQueue;     // pictures to be encoded, in encode order
     Lock          m_inputLock;
     Lock          m_outputLock;
-
-    /* pre-lookahead */
-    int           m_fullQueueSize;
-    bool          m_isActive;
-    bool          m_sliceTypeBusy;
-    bool          m_bAdaptiveQuant;
-    bool          m_outputSignalRequired;
-    bool          m_bBatchMotionSearch;
-    bool          m_bBatchFrameCosts;
     Event         m_outputSignal;
-
     LookaheadTLD* m_tld;
     x265_param*   m_param;
     Lowres*       m_lastNonB;
     int*          m_scratch;         // temp buffer for cutree propagate
-    
+
+    /* pre-lookahead */
+    int           m_fullQueueSize;
     int           m_histogram[X265_BFRAME_MAX + 1];
     int           m_lastKeyframe;
     int           m_8x8Width;
@@ -126,6 +119,13 @@ public:
     int           m_8x8Blocks;
     int           m_numCoopSlices;
     int           m_numRowsPerSlice;
+
+    bool          m_isActive;
+    bool          m_sliceTypeBusy;
+    bool          m_bAdaptiveQuant;
+    bool          m_outputSignalRequired;
+    bool          m_bBatchMotionSearch;
+    bool          m_bBatchFrameCosts;
     bool          m_filled;
     bool          m_isSceneTransition;
     Lookahead(x265_param *param, ThreadPool *pool);

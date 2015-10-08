@@ -968,7 +968,7 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         copyRceData(rce, &m_rce2Pass[rce->poc]);
     }
     rce->isActive = true;
-    bool isRefFrameScenecut = m_sliceType!= I_SLICE && m_curSlice->m_refPicList[0][0]->m_lowres.bScenecut == 1;
+    bool isRefFrameScenecut = m_sliceType!= I_SLICE && m_curSlice->m_refFrameList[0][0]->m_lowres.bScenecut;
     if (curFrame->m_lowres.bScenecut)
     {
         m_isSceneTransition = true;
@@ -1367,10 +1367,10 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
     {
         /* B-frames don't have independent rate control, but rather get the
          * average QP of the two adjacent P-frames + an offset */
-        Slice* prevRefSlice = m_curSlice->m_refPicList[0][0]->m_encData->m_slice;
-        Slice* nextRefSlice = m_curSlice->m_refPicList[1][0]->m_encData->m_slice;
-        double q0 = m_curSlice->m_refPicList[0][0]->m_encData->m_avgQpRc;
-        double q1 = m_curSlice->m_refPicList[1][0]->m_encData->m_avgQpRc;
+        Slice* prevRefSlice = m_curSlice->m_refFrameList[0][0]->m_encData->m_slice;
+        Slice* nextRefSlice = m_curSlice->m_refFrameList[1][0]->m_encData->m_slice;
+        double q0 = m_curSlice->m_refFrameList[0][0]->m_encData->m_avgQpRc;
+        double q1 = m_curSlice->m_refFrameList[1][0]->m_encData->m_avgQpRc;
         bool i0 = prevRefSlice->m_sliceType == I_SLICE;
         bool i1 = nextRefSlice->m_sliceType == I_SLICE;
         int dt0 = abs(m_curSlice->m_poc - prevRefSlice->m_poc);
@@ -1386,9 +1386,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 q0 = q1;
             }
         }
-        if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refPicList[0][0]))
+        if (prevRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[0][0]))
             q0 -= m_pbOffset / 2;
-        if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refPicList[1][0]))
+        if (nextRefSlice->m_sliceType == B_SLICE && IS_REFERENCED(m_curSlice->m_refFrameList[1][0]))
             q1 -= m_pbOffset / 2;
         if (i0 && i1)
             q = (q0 + q1) / 2 + m_ipOffset;
@@ -1512,7 +1512,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
              * Then bias the quant up or down if total size so far was far from
              * the target.
              * Result: Depending on the value of rate_tolerance, there is a
-             * tradeoff between quality and bitrate precision. But at large
+             * trade-off between quality and bitrate precision. But at large
              * tolerances, the bit distribution approaches that of 2pass. */
 
             double overflow = 1;
@@ -1584,7 +1584,7 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
             q = clipQscale(curFrame, rce, q);
             /*  clip qp to permissible range after vbv-lookahead estimation to avoid possible
              * mispredictions by initial frame size predictors, after each scenecut */
-            bool isFrameAfterScenecut = m_sliceType!= I_SLICE && m_curSlice->m_refPicList[0][0]->m_lowres.bScenecut;
+            bool isFrameAfterScenecut = m_sliceType!= I_SLICE && m_curSlice->m_refFrameList[0][0]->m_lowres.bScenecut;
             if (!m_2pass && m_isVbv && isFrameAfterScenecut)
                 q = x265_clip3(lqmin, lqmax, q);
         }
@@ -1869,7 +1869,7 @@ double RateControl::predictRowsSizeSum(Frame* curFrame, RateControlEntry* rce, d
     double qScale = x265_qp2qScale(qpVbv);
     FrameData& curEncData = *curFrame->m_encData;
     int picType = curEncData.m_slice->m_sliceType;
-    Frame* refFrame = curEncData.m_slice->m_refPicList[0][0];
+    Frame* refFrame = curEncData.m_slice->m_refFrameList[0][0];
 
     uint32_t maxRows = curEncData.m_slice->m_sps->numCuInHeight;
     uint32_t maxCols = curEncData.m_slice->m_sps->numCuInWidth;
@@ -1959,7 +1959,7 @@ int RateControl::rowDiagonalVbvRateControl(Frame* curFrame, uint32_t row, RateCo
     updatePredictor(rce->rowPred[0], qScaleVbv, (double)rowSatdCost, encodedBits);
     if (curEncData.m_slice->m_sliceType == P_SLICE)
     {
-        Frame* refFrame = curEncData.m_slice->m_refPicList[0][0];
+        Frame* refFrame = curEncData.m_slice->m_refFrameList[0][0];
         if (qpVbv < refFrame->m_encData->m_rowStat[row].diagQp)
         {
             uint64_t intraRowSatdCost = curEncData.m_rowStat[row].diagIntraSatd;
