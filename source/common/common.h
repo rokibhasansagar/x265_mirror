@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Deepthi Nandakumar <deepthi@multicorewareinc.com>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -134,10 +135,10 @@ typedef uint32_t pixel4;
 typedef int32_t  ssum2_t; // Signed sum
 #endif // if HIGH_BIT_DEPTH
 
-#if X265_DEPTH <= 10
-typedef uint32_t sse_ret_t;
+#if X265_DEPTH < 10
+typedef uint32_t sse_t;
 #else
-typedef uint64_t sse_ret_t;
+typedef uint64_t sse_t;
 #endif
 
 #ifndef NULL
@@ -316,6 +317,9 @@ typedef int16_t  coeff_t;      // transform coefficient
 #define CHROMA_H_SHIFT(x) (x == X265_CSP_I420 || x == X265_CSP_I422)
 #define CHROMA_V_SHIFT(x) (x == X265_CSP_I420)
 #define X265_MAX_PRED_MODE_PER_CTU 85 * 2 * 8
+
+#define MAX_NUM_TR_COEFFS           MAX_TR_SIZE * MAX_TR_SIZE // Maximum number of transform coefficients, for a 32x32 transform
+#define MAX_NUM_TR_CATEGORIES       16                        // 32, 16, 8, 4 transform categories each for luma and chroma
 
 namespace X265_NS {
 

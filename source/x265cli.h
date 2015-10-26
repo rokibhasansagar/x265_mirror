@@ -116,6 +116,7 @@ static const struct option long_options[] =
     { "min-keyint",     required_argument, NULL, 'i' },
     { "scenecut",       required_argument, NULL, 0 },
     { "no-scenecut",          no_argument, NULL, 0 },
+    { "intra-refresh",        no_argument, NULL, 0 },
     { "rc-lookahead",   required_argument, NULL, 0 },
     { "lookahead-slices", required_argument, NULL, 0 },
     { "bframes",        required_argument, NULL, 'b' },
@@ -192,6 +193,8 @@ static const struct option long_options[] =
     { "crop-rect",      required_argument, NULL, 0 }, /* DEPRECATED */
     { "master-display", required_argument, NULL, 0 },
     { "max-cll",        required_argument, NULL, 0 },
+    { "min-luma",       required_argument, NULL, 0 },
+    { "max-luma",       required_argument, NULL, 0 },
     { "no-dither",            no_argument, NULL, 0 },
     { "dither",               no_argument, NULL, 0 },
     { "no-repeat-headers",    no_argument, NULL, 0 },
@@ -327,6 +330,7 @@ static void showHelp(x265_param *param)
     H0("-i/--min-keyint <integer>        Scenecuts closer together than this are coded as I, not IDR. Default: auto\n");
     H0("   --no-scenecut                 Disable adaptive I-frame decision\n");
     H0("   --scenecut <integer>          How aggressively to insert extra I-frames. Default %d\n", param->scenecutThreshold);
+    H0("   --intra-refresh               Use Periodic Intra Refresh instead of IDR frames\n");
     H0("   --rc-lookahead <integer>      Number of frames for frame-type lookahead (determines encoder latency) Default %d\n", param->lookaheadDepth);
     H1("   --lookahead-slices <0..16>    Number of slices to use per lookahead cost estimate. Default %d\n", param->lookaheadSlices);
     H0("   --bframes <integer>           Maximum number of consecutive b-frames (now it only enables B GOP structure) Default %d\n", param->bframes);
@@ -403,6 +407,8 @@ static void showHelp(x265_param *param)
     H0("   --master-display <string>     SMPTE ST 2086 master display color volume info SEI (HDR)\n");
     H0("                                    format: G(x,y)B(x,y)R(x,y)WP(x,y)L(max,min)\n");
     H0("   --max-cll <string>            Emit content light level info SEI as \"cll,fall\" (HDR)\n");
+    H0("   --min-luma <integer>          Minimum luma plane value of input source picture\n");
+    H0("   --max-luma <integer>          Maximum luma plane value of input source picture\n");
     H0("\nBitstream options:\n");
     H0("   --[no-]repeat-headers         Emit SPS and PPS headers at each keyframe. Default %s\n", OPT(param->bRepeatHeaders));
     H0("   --[no-]info                   Emit SEI identifying encoder and parameters. Default %s\n", OPT(param->bEmitInfoSEI));

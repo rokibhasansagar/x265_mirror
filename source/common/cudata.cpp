@@ -2,6 +2,7 @@
  * Copyright (C) 2015 x265 project
  *
  * Authors: Steve Borho <steve@borho.org>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -198,6 +199,7 @@ void CUData::initialize(const CUDataMemPool& dataPool, uint32_t depth, int csp, 
     m_qp        = (int8_t*)charBuf; charBuf += m_numPartitions;
     m_log2CUSize         = charBuf; charBuf += m_numPartitions;
     m_lumaIntraDir       = charBuf; charBuf += m_numPartitions;
+    m_chromaIntraDir     = charBuf; charBuf += m_numPartitions;
     m_tqBypass           = charBuf; charBuf += m_numPartitions;
     m_refIdx[0] = (int8_t*)charBuf; charBuf += m_numPartitions;
     m_refIdx[1] = (int8_t*)charBuf; charBuf += m_numPartitions;
@@ -215,7 +217,6 @@ void CUData::initialize(const CUDataMemPool& dataPool, uint32_t depth, int csp, 
     m_cbf[0]             = charBuf; charBuf += m_numPartitions;
     m_cbf[1]             = charBuf; charBuf += m_numPartitions;
     m_cbf[2]             = charBuf; charBuf += m_numPartitions;
-    m_chromaIntraDir     = charBuf; charBuf += m_numPartitions;
 
     X265_CHECK(charBuf == dataPool.charMemBlock + (m_numPartitions * BytesPerPartition) * (instance + 1), "CU data layout is broken\n");
 
@@ -245,7 +246,8 @@ void CUData::initCTU(const Frame& frame, uint32_t cuAddr, int qp)
     /* sequential memsets */
     m_partSet((uint8_t*)m_qp, (uint8_t)qp);
     m_partSet(m_log2CUSize,   (uint8_t)g_maxLog2CUSize);
-    m_partSet(m_lumaIntraDir, (uint8_t)DC_IDX);
+    m_partSet(m_lumaIntraDir, (uint8_t)ALL_IDX);
+    m_partSet(m_chromaIntraDir, (uint8_t)ALL_IDX);
     m_partSet(m_tqBypass,     (uint8_t)frame.m_encData->m_param->bLossless);
     if (m_slice->m_sliceType != I_SLICE)
     {
@@ -256,7 +258,7 @@ void CUData::initCTU(const Frame& frame, uint32_t cuAddr, int qp)
     X265_CHECK(!(frame.m_encData->m_param->bLossless && !m_slice->m_pps->bTransquantBypassEnabled), "lossless enabled without TQbypass in PPS\n");
 
     /* initialize the remaining CU data in one memset */
-    memset(m_cuDepth, 0, (BytesPerPartition - 6) * m_numPartitions);
+    memset(m_cuDepth, 0, (BytesPerPartition - 7) * m_numPartitions);
 
     uint32_t widthInCU = m_slice->m_sps->numCuInWidth;
     m_cuLeft = (m_cuAddr % widthInCU) ? m_encData->getPicCTU(m_cuAddr - 1) : NULL;
@@ -283,14 +285,15 @@ void CUData::initSubCU(const CUData& ctu, const CUGeom& cuGeom, int qp)
     m_partSet((uint8_t*)m_qp, (uint8_t)qp);
 
     m_partSet(m_log2CUSize,   (uint8_t)cuGeom.log2CUSize);
-    m_partSet(m_lumaIntraDir, (uint8_t)DC_IDX);
+    m_partSet(m_lumaIntraDir, (uint8_t)ALL_IDX);
+    m_partSet(m_chromaIntraDir, (uint8_t)ALL_IDX);
     m_partSet(m_tqBypass,     (uint8_t)m_encData->m_param->bLossless);
     m_partSet((uint8_t*)m_refIdx[0], (uint8_t)REF_NOT_VALID);
     m_partSet((uint8_t*)m_refIdx[1], (uint8_t)REF_NOT_VALID);
     m_partSet(m_cuDepth,      (uint8_t)cuGeom.depth);
 
     /* initialize the remaining CU data in one memset */
-    memset(m_predMode, 0, (BytesPerPartition - 7) * m_numPartitions);
+    memset(m_predMode, 0, (BytesPerPartition - 8) * m_numPartitions);
 }
 
 /* Copy the results of a sub-part (split) CU to the parent CU */
@@ -370,6 +373,8 @@ void CUData::initLosslessCU(const CUData& cu, const CUGeom& cuGeom)
 
     /* force TQBypass to true */
     m_partSet(m_tqBypass, true);
+
+    m_partSet(m_chromaIntraDir, (uint8_t)ALL_IDX);
 
     /* clear residual coding flags */
     m_partSet(m_predMode, cu.m_predMode[0] & (MODE_INTRA | MODE_INTER));
@@ -1676,7 +1681,7 @@ int CUData::getPMV(InterNeighbourMV *neighbours, uint32_t picList, uint32_t refI
         if (tempRefIdx != -1)
         {
             uint32_t cuAddr = neighbours[MD_COLLOCATED].cuAddr[picList];
-            const Frame* colPic = m_slice->m_refPicList[m_slice->isInterB() && !m_slice->m_colFromL0Flag][m_slice->m_colRefIdx];
+            const Frame* colPic = m_slice->m_refFrameList[m_slice->isInterB() && !m_slice->m_colFromL0Flag][m_slice->m_colRefIdx];
             const CUData* colCU = colPic->m_encData->getPicCTU(cuAddr);
 
             // Scale the vector
@@ -1857,7 +1862,7 @@ bool CUData::getIndirectPMV(MV& outMV, InterNeighbourMV *neighbours, uint32_t pi
 
 bool CUData::getColMVP(MV& outMV, int& outRefIdx, int picList, int cuAddr, int partUnitIdx) const
 {
-    const Frame* colPic = m_slice->m_refPicList[m_slice->isInterB() && !m_slice->m_colFromL0Flag][m_slice->m_colRefIdx];
+    const Frame* colPic = m_slice->m_refFrameList[m_slice->isInterB() && !m_slice->m_colFromL0Flag][m_slice->m_colRefIdx];
     const CUData* colCU = colPic->m_encData->getPicCTU(cuAddr);
 
     uint32_t absPartAddr = partUnitIdx & TMVP_UNIT_MASK;
@@ -1892,7 +1897,7 @@ bool CUData::getColMVP(MV& outMV, int& outRefIdx, int picList, int cuAddr, int p
 // Cache the collocated MV.
 bool CUData::getCollocatedMV(int cuAddr, int partUnitIdx, InterNeighbourMV *neighbour) const
 {
-    const Frame* colPic = m_slice->m_refPicList[m_slice->isInterB() && !m_slice->m_colFromL0Flag][m_slice->m_colRefIdx];
+    const Frame* colPic = m_slice->m_refFrameList[m_slice->isInterB() && !m_slice->m_colFromL0Flag][m_slice->m_colRefIdx];
     const CUData* colCU = colPic->m_encData->getPicCTU(cuAddr);
 
     uint32_t absPartAddr = partUnitIdx & TMVP_UNIT_MASK;
@@ -1951,7 +1956,7 @@ void CUData::getTUEntropyCodingParameters(TUEntropyCodingParameters &result, uin
     bool bIsIntra = isIntra(absPartIdx);
 
     // set the group layout
-    result.log2TrSizeCG = log2TrSize - 2;
+    const uint32_t log2TrSizeCG = log2TrSize - 2;
 
     // set the scan orders
     if (bIsIntra)
@@ -1979,7 +1984,7 @@ void CUData::getTUEntropyCodingParameters(TUEntropyCodingParameters &result, uin
         result.scanType = SCAN_DIAG;
 
     result.scan     = g_scanOrder[result.scanType][log2TrSize - 2];
-    result.scanCG   = g_scanOrderCG[result.scanType][result.log2TrSizeCG];
+    result.scanCG   = g_scanOrderCG[result.scanType][log2TrSizeCG];
 
     if (log2TrSize == 2)
         result.firstSignificanceMapContext = 0;

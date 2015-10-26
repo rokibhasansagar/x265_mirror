@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Steve Borho <steve@borho.org>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,6 +42,7 @@ PixelHarness::PixelHarness()
         int_test_buff[0][i]     = rand() % SHORT_MAX;
         ushort_test_buff[0][i]  = rand() % ((1 << 16) - 1);
         uchar_test_buff[0][i]   = rand() % ((1 << 8) - 1);
+        residual_test_buff[0][i] = (rand() % (2 * RMAX + 1)) - RMAX - 1;// For sse_ss only
 
         pixel_test_buff[1][i]   = PIXEL_MIN;
         short_test_buff[1][i]   = SMIN;
@@ -49,6 +51,7 @@ PixelHarness::PixelHarness()
         int_test_buff[1][i]     = SHORT_MIN;
         ushort_test_buff[1][i]  = PIXEL_MIN;
         uchar_test_buff[1][i]   = PIXEL_MIN;
+        residual_test_buff[1][i] = RMIN;
 
         pixel_test_buff[2][i]   = PIXEL_MAX;
         short_test_buff[2][i]   = SMAX;
@@ -57,6 +60,7 @@ PixelHarness::PixelHarness()
         int_test_buff[2][i]     = SHORT_MAX;
         ushort_test_buff[2][i]  = ((1 << 16) - 1);
         uchar_test_buff[2][i]   = 255;
+        residual_test_buff[2][i] = RMAX;
 
         pbuf1[i] = rand() & PIXEL_MAX;
         pbuf2[i] = rand() & PIXEL_MAX;
@@ -103,8 +107,8 @@ bool PixelHarness::check_pixel_sse(pixel_sse_t ref, pixel_sse_t opt)
     {
         int index1 = rand() % TEST_CASES;
         int index2 = rand() % TEST_CASES;
-        sse_ret_t vres = (sse_ret_t)checked(opt, pixel_test_buff[index1], stride, pixel_test_buff[index2] + j, stride);
-        sse_ret_t cres = ref(pixel_test_buff[index1], stride, pixel_test_buff[index2] + j, stride);
+        sse_t vres = (sse_t)checked(opt, pixel_test_buff[index1], stride, pixel_test_buff[index2] + j, stride);
+        sse_t cres = ref(pixel_test_buff[index1], stride, pixel_test_buff[index2] + j, stride);
         if (vres != cres)
             return false;
 
@@ -124,8 +128,8 @@ bool PixelHarness::check_pixel_sse_ss(pixel_sse_ss_t ref, pixel_sse_ss_t opt)
     {
         int index1 = rand() % TEST_CASES;
         int index2 = rand() % TEST_CASES;
-        sse_ret_t vres = (sse_ret_t)checked(opt, short_test_buff[index1], stride, short_test_buff[index2] + j, stride);
-        sse_ret_t cres = ref(short_test_buff[index1], stride, short_test_buff[index2] + j, stride);
+        sse_t vres = (sse_t)checked(opt, residual_test_buff[index1], stride, residual_test_buff[index2] + j, stride);
+        sse_t cres = ref(residual_test_buff[index1], stride, residual_test_buff[index2] + j, stride);
         if (vres != cres)
             return false;
 
@@ -227,8 +231,8 @@ bool PixelHarness::check_ssd_s(pixel_ssd_s_t ref, pixel_ssd_s_t opt)
     {
         // NOTE: stride must be multiple of 16, because minimum block is 4x4
         int stride = (STRIDE + (rand() % STRIDE)) & ~15;
-        sse_ret_t cres = ref(sbuf1 + j, stride);
-        sse_ret_t vres = (sse_ret_t)checked(opt, sbuf1 + j, (intptr_t)stride);
+        sse_t cres = ref(sbuf1 + j, stride);
+        sse_t vres = (sse_t)checked(opt, sbuf1 + j, (intptr_t)stride);
 
         if (cres != vres)
             return false;
@@ -854,7 +858,7 @@ bool PixelHarness::check_ssim_end(ssim_end4_t ref, ssim_end4_t opt)
         int width = (rand() % 4) + 1; // range[1-4]
         float cres = ref(sum0, sum1, width);
         float vres = checked_float(opt, sum0, sum1, width);
-        if (fabs(vres - cres) > 0.00001)
+        if (fabs(vres - cres) > 0.0001)
             return false;
 
         reportfail();
@@ -1061,8 +1065,8 @@ bool PixelHarness::check_saoCuStatsBO_t(saoCuStatsBO_t ref, saoCuStatsBO_t opt)
         int endX = MAX_CU_SIZE - (rand() % 5);
         int endY = MAX_CU_SIZE - (rand() % 4) - 1;
 
-        ref(pbuf2 + j + 1, pbuf3 + 1, stride, endX, endY, stats_ref, count_ref);
-        checked(opt, pbuf2 + j + 1, pbuf3 + 1, stride, endX, endY, stats_vec, count_vec);
+        ref(sbuf2 + j + 1, pbuf3 + 1, stride, endX, endY, stats_ref, count_ref);
+        checked(opt, sbuf2 + j + 1, pbuf3 + 1, stride, endX, endY, stats_vec, count_vec);
 
         if (memcmp(stats_ref, stats_vec, sizeof(stats_ref)) || memcmp(count_ref, count_vec, sizeof(count_ref)))
             return false;
@@ -1097,8 +1101,8 @@ bool PixelHarness::check_saoCuStatsE0_t(saoCuStatsE0_t ref, saoCuStatsE0_t opt)
         int endX = MAX_CU_SIZE - (rand() % 5) - 1;
         int endY = MAX_CU_SIZE - (rand() % 4) - 1;
 
-        ref(pbuf2 + j + 1, pbuf3 + j + 1, stride, endX, endY, stats_ref, count_ref);
-        checked(opt, pbuf2 + j + 1, pbuf3 + j + 1, stride, endX, endY, stats_vec, count_vec);
+        ref(sbuf2 + j + 1, pbuf3 + j + 1, stride, endX, endY, stats_ref, count_ref);
+        checked(opt, sbuf2 + j + 1, pbuf3 + j + 1, stride, endX, endY, stats_vec, count_vec);
 
         if (memcmp(stats_ref, stats_vec, sizeof(stats_ref)) || memcmp(count_ref, count_vec, sizeof(count_ref)))
             return false;
@@ -1141,8 +1145,8 @@ bool PixelHarness::check_saoCuStatsE1_t(saoCuStatsE1_t ref, saoCuStatsE1_t opt)
         int endX = MAX_CU_SIZE - (rand() % 5);
         int endY = MAX_CU_SIZE - (rand() % 4) - 1;
 
-        ref(pbuf2 + 1, pbuf3 + 1, stride, upBuff1_ref, endX, endY, stats_ref, count_ref);
-        checked(opt, pbuf2 + 1, pbuf3 + 1, stride, upBuff1_vec, endX, endY, stats_vec, count_vec);
+        ref(sbuf2 + 1, pbuf3 + 1, stride, upBuff1_ref, endX, endY, stats_ref, count_ref);
+        checked(opt, sbuf2 + 1, pbuf3 + 1, stride, upBuff1_vec, endX, endY, stats_vec, count_vec);
 
         if (   memcmp(_upBuff1_ref, _upBuff1_vec, sizeof(_upBuff1_ref))
             || memcmp(stats_ref, stats_vec, sizeof(stats_ref))
@@ -1193,8 +1197,8 @@ bool PixelHarness::check_saoCuStatsE2_t(saoCuStatsE2_t ref, saoCuStatsE2_t opt)
         int endX = MAX_CU_SIZE - (rand() % 5) - 1;
         int endY = MAX_CU_SIZE - (rand() % 4) - 1;
 
-        ref(pbuf2 + 1, pbuf3 + 1, stride, upBuff1_ref, upBufft_ref, endX, endY, stats_ref, count_ref);
-        checked(opt, pbuf2 + 1, pbuf3 + 1, stride, upBuff1_vec, upBufft_vec, endX, endY, stats_vec, count_vec);
+        ref(sbuf2 + 1, pbuf3 + 1, stride, upBuff1_ref, upBufft_ref, endX, endY, stats_ref, count_ref);
+        checked(opt, sbuf2 + 1, pbuf3 + 1, stride, upBuff1_vec, upBufft_vec, endX, endY, stats_vec, count_vec);
 
         // TODO: don't check upBuff*, the latest output pixels different, and can move into stack temporary buffer in future
         if (   memcmp(_upBuff1_ref, _upBuff1_vec, sizeof(_upBuff1_ref))
@@ -1244,8 +1248,8 @@ bool PixelHarness::check_saoCuStatsE3_t(saoCuStatsE3_t ref, saoCuStatsE3_t opt)
         int endX = MAX_CU_SIZE - (rand() % 5) - 1;
         int endY = MAX_CU_SIZE - (rand() % 4) - 1;
 
-        ref(pbuf2, pbuf3, stride, upBuff1_ref, endX, endY, stats_ref, count_ref);
-        checked(opt, pbuf2, pbuf3, stride, upBuff1_vec, endX, endY, stats_vec, count_vec);
+        ref(sbuf2, pbuf3, stride, upBuff1_ref, endX, endY, stats_ref, count_ref);
+        checked(opt, sbuf2, pbuf3, stride, upBuff1_vec, endX, endY, stats_vec, count_vec);
 
         if (   memcmp(_upBuff1_ref, _upBuff1_vec, sizeof(_upBuff1_ref))
             || memcmp(stats_ref, stats_vec, sizeof(stats_ref))
@@ -1570,8 +1574,8 @@ bool PixelHarness::check_findPosFirstLast(findPosFirstLast_t ref, findPosFirstLa
         // specially case: all coeff group are zero
         if (j >= SCAN_SET_SIZE)
         {
-            // all zero block the high 16-bits undefined
-            if ((uint16_t)ref_scanPos != (uint16_t)opt_scanPos)
+            // all zero block the high 24-bits undefined
+            if ((uint8_t)ref_scanPos != (uint8_t)opt_scanPos)
                 return false;
         }
         else if (ref_scanPos != opt_scanPos)
@@ -1719,11 +1723,12 @@ bool PixelHarness::check_costCoeffNxN(costCoeffNxN_t ref, costCoeffNxN_t opt)
     }
     return true;
 }
+
 bool PixelHarness::check_costCoeffRemain(costCoeffRemain_t ref, costCoeffRemain_t opt)
 {
-    ALIGN_VAR_32(uint16_t, absCoeff[1 << MLS_CG_SIZE]);
+    ALIGN_VAR_32(uint16_t, absCoeff[(1 << MLS_CG_SIZE) + ITERS]);
 
-    for (int i = 0; i < (1 << MLS_CG_SIZE); i++)
+    for (int i = 0; i < (1 << MLS_CG_SIZE) + ITERS; i++)
     {
         absCoeff[i] = rand() & SHORT_MAX;
         // more coeff with value one
@@ -1737,17 +1742,165 @@ bool PixelHarness::check_costCoeffRemain(costCoeffRemain_t ref, costCoeffRemain_
         int numNonZero = rand() % 17; //can be random, range[1, 16]
         for (k = 0; k < C1FLAG_NUMBER; k++)
         {
-            if (absCoeff[k] >= 2)
+            if (absCoeff[i + k] >= 2)
             {
                 break;
             }
         }
         firstC2Idx = k; // it is index of exact first coeff that value more than 2
-        int ref_sum = ref(absCoeff, numNonZero, firstC2Idx);
-        int opt_sum = (int)checked(opt, absCoeff, numNonZero, firstC2Idx);
+        int ref_sum = ref(absCoeff + i, numNonZero, firstC2Idx);
+        int opt_sum = (int)checked(opt, absCoeff + i, numNonZero, firstC2Idx);
         if (ref_sum != opt_sum)
             return false;
     }
+    return true;
+}
+
+bool PixelHarness::check_costC1C2Flag(costC1C2Flag_t ref, costC1C2Flag_t opt)
+{
+    ALIGN_VAR_32(uint16_t, absCoeff[(1 << MLS_CG_SIZE)]);
+
+    // generate CABAC context table
+    uint8_t ref_baseCtx[8];
+    uint8_t opt_baseCtx[8];
+    for (int k = 0; k < 8; k++)
+    {
+        ref_baseCtx[k] =
+        opt_baseCtx[k] = (rand() % (125 - 2)) + 2;
+    }
+
+    for (int i = 0; i < ITERS; i++)
+    {
+        int rand_offset = rand() % 4;
+        int numNonZero = 0;
+
+        // generate test data, all are Absolute value and Aligned
+        for (int k = 0; k < C1FLAG_NUMBER; k++)
+        {
+            int value = rand() & SHORT_MAX;
+            // more coeff with value [0,2]
+            if (value < SHORT_MAX * 1 / 3)
+                value = 0;
+            else if (value < SHORT_MAX * 2 / 3)
+                value = 1;
+            else if (value < SHORT_MAX * 3 / 4)
+                value = 2;
+
+            if (value)
+            {
+                absCoeff[numNonZero] = (uint16_t)value;
+                numNonZero++;
+            }
+        }
+        if (numNonZero == 0)
+        {
+            numNonZero = 1;
+            absCoeff[0] = 1;
+        }
+
+        int ref_sum = ref(absCoeff, (intptr_t)numNonZero, ref_baseCtx, (intptr_t)rand_offset);
+        int opt_sum = (int)checked(opt, absCoeff, (intptr_t)numNonZero, opt_baseCtx, (intptr_t)rand_offset);
+        if (ref_sum != opt_sum)
+        {
+            ref_sum = ref(absCoeff, (intptr_t)numNonZero, ref_baseCtx, (intptr_t)rand_offset);
+            opt_sum = opt(absCoeff, (intptr_t)numNonZero, opt_baseCtx, (intptr_t)rand_offset);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool PixelHarness::check_planeClipAndMax(planeClipAndMax_t ref, planeClipAndMax_t opt)
+{
+    for (int i = 0; i < ITERS; i++)
+    {
+        intptr_t rand_stride = rand() % STRIDE;
+        int rand_width = (rand() % (STRIDE * 2)) + 1;
+        const int rand_height = (rand() % MAX_HEIGHT) + 1;
+        const pixel rand_min = rand() % 32;
+        const pixel rand_max = PIXEL_MAX - (rand() % 32);
+        uint64_t ref_sum, opt_sum;
+
+        // video width must be more than or equal to 32
+        if (rand_width < 32)
+            rand_width = 32;
+
+        // stride must be more than or equal to width
+        if (rand_stride < rand_width)
+            rand_stride = rand_width;
+
+        pixel ref_max = ref(pbuf1, rand_stride, rand_width, rand_height, &ref_sum, rand_min, rand_max);
+        pixel opt_max = (pixel)checked(opt, pbuf1, rand_stride, rand_width, rand_height, &opt_sum, rand_min, rand_max);
+
+        if (ref_max != opt_max)
+            return false;
+    }
+    return true;
+}
+
+bool PixelHarness::check_pelFilterLumaStrong_H(pelFilterLumaStrong_t ref, pelFilterLumaStrong_t opt)
+{
+    intptr_t srcStep = 1, offset = 64;
+    int32_t tcP, tcQ, maskP, maskQ, tc;
+    int j = 0;
+
+    pixel pixel_test_buff1[TEST_CASES][BUFFSIZE];
+    for (int i = 0; i < TEST_CASES; i++)
+        memcpy(pixel_test_buff1[i], pixel_test_buff[i], sizeof(pixel) * BUFFSIZE);
+
+    for (int i = 0; i < ITERS; i++)
+    {
+        tc      = rand() % PIXEL_MAX;
+        maskP   = (rand() % PIXEL_MAX) - 1;
+        maskQ   = (rand() % PIXEL_MAX) - 1;
+        tcP     = (tc & maskP);
+        tcQ     = (tc & maskQ);
+
+        int index = rand() % 3;
+
+        ref(pixel_test_buff[index]  + 4 * offset + j, srcStep, offset, tcP, tcQ);
+        checked(opt, pixel_test_buff1[index] + 4 * offset + j, srcStep, offset, tcP, tcQ);
+
+        if (memcmp(pixel_test_buff[index], pixel_test_buff1[index], sizeof(pixel) * BUFFSIZE))
+            return false;
+
+        reportfail()
+        j += INCR;
+    }
+
+    return true;
+}
+
+bool PixelHarness::check_pelFilterLumaStrong_V(pelFilterLumaStrong_t ref, pelFilterLumaStrong_t opt)
+{
+    intptr_t srcStep = 64, offset = 1;
+    int32_t tcP, tcQ, maskP, maskQ, tc;
+    int j = 0;
+
+    pixel pixel_test_buff1[TEST_CASES][BUFFSIZE];
+    for (int i = 0; i < TEST_CASES; i++)
+        memcpy(pixel_test_buff1[i], pixel_test_buff[i], sizeof(pixel) * BUFFSIZE);
+
+    for (int i = 0; i < ITERS; i++)
+    {
+        tc      = rand() % PIXEL_MAX;
+        maskP   = (rand() % PIXEL_MAX) - 1;
+        maskQ   = (rand() % PIXEL_MAX) - 1;
+        tcP     = (tc & maskP);
+        tcQ     = (tc & maskQ);
+
+        int index = rand() % 3;
+
+        ref(pixel_test_buff[index]  + 4 + j, srcStep, offset, tcP, tcQ);
+        checked(opt, pixel_test_buff1[index] + 4 + j, srcStep, offset, tcP, tcQ);
+
+        if (memcmp(pixel_test_buff[index], pixel_test_buff1[index], sizeof(pixel) * BUFFSIZE))
+            return false;
+
+        reportfail()
+        j += INCR;
+    }
+
     return true;
 }
 
@@ -2175,7 +2328,7 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
     {
         if (!check_ssim_4x4x2_core(ref.ssim_4x4x2_core, opt.ssim_4x4x2_core))
         {
-            printf("ssim_end_4 failed!\n");
+            printf("ssim_4x4x2_core failed!\n");
             return false;
         }
     }
@@ -2362,6 +2515,7 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
             return false;
         }
     }
+
     if (opt.costCoeffNxN)
     {
         if (!check_costCoeffNxN(ref.costCoeffNxN, opt.costCoeffNxN))
@@ -2370,11 +2524,49 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
             return false;
         }
     }
+
     if (opt.costCoeffRemain)
     {
         if (!check_costCoeffRemain(ref.costCoeffRemain, opt.costCoeffRemain))
         {
             printf("costCoeffRemain failed!\n");
+            return false;
+        }
+    }
+
+    if (opt.costC1C2Flag)
+    {
+        if (!check_costC1C2Flag(ref.costC1C2Flag, opt.costC1C2Flag))
+        {
+            printf("costC1C2Flag failed!\n");
+            return false;
+        }
+    }
+    
+
+    if (opt.planeClipAndMax)
+    {
+        if (!check_planeClipAndMax(ref.planeClipAndMax, opt.planeClipAndMax))
+        {
+            printf("planeClipAndMax failed!\n");
+            return false;
+        }
+    }
+
+    if (opt.pelFilterLumaStrong[0])
+    {
+        if (!check_pelFilterLumaStrong_V(ref.pelFilterLumaStrong[0], opt.pelFilterLumaStrong[0]))
+        {
+            printf("pelFilterLumaStrong Vertical failed!\n");
+            return false;
+        }
+    }
+
+    if (opt.pelFilterLumaStrong[1])
+    {
+        if (!check_pelFilterLumaStrong_H(ref.pelFilterLumaStrong[1], opt.pelFilterLumaStrong[1]))
+        {
+            printf("pelFilterLumaStrong Horizontal failed!\n");
             return false;
         }
     }
@@ -2745,14 +2937,14 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
     {
         int32_t stats[33], count[33];
         HEADER0("saoCuStatsBO");
-        REPORT_SPEEDUP(opt.saoCuStatsBO, ref.saoCuStatsBO, pbuf2, pbuf3, 64, 60, 61, stats, count);
+        REPORT_SPEEDUP(opt.saoCuStatsBO, ref.saoCuStatsBO, sbuf2, pbuf3, 64, 60, 61, stats, count);
     }
 
     if (opt.saoCuStatsE0)
     {
         int32_t stats[33], count[33];
         HEADER0("saoCuStatsE0");
-        REPORT_SPEEDUP(opt.saoCuStatsE0, ref.saoCuStatsE0, pbuf2, pbuf3, 64, 60, 61, stats, count);
+        REPORT_SPEEDUP(opt.saoCuStatsE0, ref.saoCuStatsE0, sbuf2, pbuf3, 64, 60, 61, stats, count);
     }
 
     if (opt.saoCuStatsE1)
@@ -2761,7 +2953,7 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         int8_t upBuff1[MAX_CU_SIZE + 2];
         memset(upBuff1, 1, sizeof(upBuff1));
         HEADER0("saoCuStatsE1");
-        REPORT_SPEEDUP(opt.saoCuStatsE1, ref.saoCuStatsE1, pbuf2, pbuf3, 64, upBuff1 + 1,60, 61, stats, count);
+        REPORT_SPEEDUP(opt.saoCuStatsE1, ref.saoCuStatsE1, sbuf2, pbuf3, 64, upBuff1 + 1,60, 61, stats, count);
     }
 
     if (opt.saoCuStatsE2)
@@ -2772,7 +2964,7 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         memset(upBuff1, 1, sizeof(upBuff1));
         memset(upBufft, -1, sizeof(upBufft));
         HEADER0("saoCuStatsE2");
-        REPORT_SPEEDUP(opt.saoCuStatsE2, ref.saoCuStatsE2, pbuf2, pbuf3, 64, upBuff1 + 1, upBufft + 1, 60, 61, stats, count);
+        REPORT_SPEEDUP(opt.saoCuStatsE2, ref.saoCuStatsE2, sbuf2, pbuf3, 64, upBuff1 + 1, upBufft + 1, 60, 61, stats, count);
     }
 
     if (opt.saoCuStatsE3)
@@ -2781,7 +2973,7 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         int32_t stats[5], count[5];
         memset(upBuff1, 1, sizeof(upBuff1));
         HEADER0("saoCuStatsE3");
-        REPORT_SPEEDUP(opt.saoCuStatsE3, ref.saoCuStatsE3, pbuf2, pbuf3, 64, upBuff1 + 1, 60, 61, stats, count);
+        REPORT_SPEEDUP(opt.saoCuStatsE3, ref.saoCuStatsE3, sbuf2, pbuf3, 64, upBuff1 + 1, 60, 61, stats, count);
     }
 
     if (opt.planecopy_sp)
@@ -2823,6 +3015,7 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         coefBuf[3 + 3 * 32] = 0x0BAD;
         REPORT_SPEEDUP(opt.findPosFirstLast, ref.findPosFirstLast, coefBuf, 32, g_scan4x4[SCAN_DIAG]);
     }
+
     if (opt.costCoeffNxN)
     {
         HEADER0("costCoeffNxN");
@@ -2841,6 +3034,7 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
 
         REPORT_SPEEDUP(opt.costCoeffNxN, ref.costCoeffNxN, g_scan4x4[SCAN_DIAG], coefBuf, 32, tmpOut, ctxSig, 0xFFFF, ctx, 1, 15, 32);
     }
+
     if (opt.costCoeffRemain)
     {
         HEADER0("costCoeffRemain");
@@ -2848,5 +3042,38 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         memset(abscoefBuf, 0, sizeof(abscoefBuf));
         memset(abscoefBuf + 32 * 31, 1, 32 * sizeof(uint16_t));
         REPORT_SPEEDUP(opt.costCoeffRemain, ref.costCoeffRemain, abscoefBuf, 16, 3);
+    }
+
+    if (opt.costC1C2Flag)
+    {
+        HEADER0("costC1C2Flag");
+        ALIGN_VAR_32(uint16_t, abscoefBuf[C1FLAG_NUMBER]);
+        memset(abscoefBuf, 1, sizeof(abscoefBuf));
+        abscoefBuf[C1FLAG_NUMBER - 2] = 2;
+        abscoefBuf[C1FLAG_NUMBER - 1] = 3;
+        REPORT_SPEEDUP(opt.costC1C2Flag, ref.costC1C2Flag, abscoefBuf, C1FLAG_NUMBER, (uint8_t*)psbuf1, 1);
+    }
+
+    if (opt.planeClipAndMax)
+    {
+        HEADER0("planeClipAndMax");
+        uint64_t dummy;
+        REPORT_SPEEDUP(opt.planeClipAndMax, ref.planeClipAndMax, pbuf1, 128, 63, 62, &dummy, 1, PIXEL_MAX - 1);
+    }
+
+    if (opt.pelFilterLumaStrong[0])
+    {
+        int32_t tcP = (rand() % PIXEL_MAX) - 1;
+        int32_t tcQ = (rand() % PIXEL_MAX) - 1;
+        HEADER0("pelFilterLumaStrong_Vertical");
+        REPORT_SPEEDUP(opt.pelFilterLumaStrong[0], ref.pelFilterLumaStrong[0], pbuf1, STRIDE, 1, tcP, tcQ);
+    }
+
+    if (opt.pelFilterLumaStrong[1])
+    {
+        int32_t tcP = (rand() % PIXEL_MAX) - 1;
+        int32_t tcQ = (rand() % PIXEL_MAX) - 1;
+        HEADER0("pelFilterLumaStrong_Horizontal");
+        REPORT_SPEEDUP(opt.pelFilterLumaStrong[1], ref.pelFilterLumaStrong[1], pbuf1, 1, STRIDE, tcP, tcQ);
     }
 }

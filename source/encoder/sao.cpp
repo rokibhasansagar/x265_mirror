@@ -106,6 +106,7 @@ SAO::SAO()
 bool SAO::create(x265_param* param)
 {
     m_param = param;
+    m_chromaFormat = param->internalCsp;
     m_hChromaShift = CHROMA_H_SHIFT(param->internalCsp);
     m_vChromaShift = CHROMA_V_SHIFT(param->internalCsp);
 
@@ -243,12 +244,13 @@ void SAO::startSlice(Frame* frame, Entropy& initState, int qp)
 void SAO::processSaoCu(int addr, int typeIdx, int plane)
 {
     int x, y;
-    const CUData* cu = m_frame->m_encData->getPicCTU(addr);
-    pixel* rec = m_frame->m_reconPic->getPlaneAddr(plane, addr);
-    intptr_t stride = plane ? m_frame->m_reconPic->m_strideC : m_frame->m_reconPic->m_stride;
+    PicYuv* reconPic = m_frame->m_reconPic;
+    pixel* rec = reconPic->getPlaneAddr(plane, addr);
+    intptr_t stride = plane ? reconPic->m_strideC : reconPic->m_stride;
     uint32_t picWidth  = m_param->sourceWidth;
     uint32_t picHeight = m_param->sourceHeight;
-    int ctuWidth  = g_maxCUSize;
+    const CUData* cu = m_frame->m_encData->getPicCTU(addr);
+    int ctuWidth = g_maxCUSize;
     int ctuHeight = g_maxCUSize;
     uint32_t lpelx = cu->m_cuPelX;
     uint32_t tpely = cu->m_cuPelY;
@@ -572,7 +574,8 @@ void SAO::processSaoCu(int addr, int typeIdx, int plane)
 /* Process SAO all units */
 void SAO::processSaoUnitRow(SaoCtuParam* ctuParam, int idxY, int plane)
 {
-    intptr_t stride = plane ? m_frame->m_reconPic->m_strideC : m_frame->m_reconPic->m_stride;
+    PicYuv* reconPic = m_frame->m_reconPic;
+    intptr_t stride = plane ? reconPic->m_strideC : reconPic->m_stride;
     uint32_t picWidth  = m_param->sourceWidth;
     int ctuWidth  = g_maxCUSize;
     int ctuHeight = g_maxCUSize;
@@ -585,12 +588,12 @@ void SAO::processSaoUnitRow(SaoCtuParam* ctuParam, int idxY, int plane)
 
     if (!idxY)
     {
-        pixel* rec = m_frame->m_reconPic->m_picOrg[plane];
+        pixel* rec = reconPic->m_picOrg[plane];
         memcpy(m_tmpU1[plane], rec, sizeof(pixel) * picWidth);
     }
 
     int addr = idxY * m_numCuInWidth;
-    pixel* rec = plane ? m_frame->m_reconPic->getChromaAddr(plane, addr) : m_frame->m_reconPic->getLumaAddr(addr);
+    pixel* rec = plane ? reconPic->getChromaAddr(plane, addr) : reconPic->getLumaAddr(addr);
 
     for (int i = 0; i < ctuHeight + 1; i++)
     {
@@ -635,7 +638,7 @@ void SAO::processSaoUnitRow(SaoCtuParam* ctuParam, int idxY, int plane)
         }
         else if (idxX != (m_numCuInWidth - 1))
         {
-            rec = plane ? m_frame->m_reconPic->getChromaAddr(plane, addr) : m_frame->m_reconPic->getLumaAddr(addr);
+            rec = plane ? reconPic->getChromaAddr(plane, addr) : reconPic->getLumaAddr(addr);
 
             for (int i = 0; i < ctuHeight + 1; i++)
             {
@@ -671,12 +674,13 @@ void SAO::copySaoUnit(SaoCtuParam* saoUnitDst, const SaoCtuParam* saoUnitSrc)
 /* Calculate SAO statistics for current CTU without non-crossing slice */
 void SAO::calcSaoStatsCu(int addr, int plane)
 {
+    const PicYuv* reconPic = m_frame->m_reconPic;
     const CUData* cu = m_frame->m_encData->getPicCTU(addr);
     const pixel* fenc0 = m_frame->m_fencPic->getPlaneAddr(plane, addr);
-    const pixel* rec0  = m_frame->m_reconPic->getPlaneAddr(plane, addr);
+    const pixel* rec0  = reconPic->getPlaneAddr(plane, addr);
     const pixel* fenc;
     const pixel* rec;
-    intptr_t stride = plane ? m_frame->m_reconPic->m_strideC : m_frame->m_reconPic->m_stride;
+    intptr_t stride = plane ? reconPic->m_strideC : reconPic->m_stride;
     uint32_t picWidth  = m_param->sourceWidth;
     uint32_t picHeight = m_param->sourceHeight;
     int ctuWidth  = g_maxCUSize;
@@ -702,24 +706,48 @@ void SAO::calcSaoStatsCu(int addr, int plane)
     int endX;
     int endY;
 
-    int skipB = plane ? 2 : 4;
-    int skipR = plane ? 3 : 5;
+    const int plane_offset = plane ? 2 : 0;
+    int skipB = 4;
+    int skipR = 5;
 
-    int8_t _upBuff1[MAX_CU_SIZE + 2], *upBuff1 = _upBuff1 + 1;
-    int8_t _upBufft[MAX_CU_SIZE + 2], *upBufft = _upBufft + 1;
+    int8_t _upBuff[2 * (MAX_CU_SIZE + 16 + 16)], *upBuff1 = _upBuff + 16, *upBufft = upBuff1 + (MAX_CU_SIZE + 16 + 16);
+
+    ALIGN_VAR_32(int16_t, diff[MAX_CU_SIZE * MAX_CU_SIZE]);
+
+    // Calculate (fenc - frec) and put into diff[]
+    if ((lpelx + ctuWidth <  picWidth) & (tpely + ctuHeight < picHeight))
+    {
+        // WARNING: *) May read beyond bound on video than ctuWidth or ctuHeight is NOT multiple of cuSize
+        X265_CHECK((ctuWidth == ctuHeight) || (m_chromaFormat != X265_CSP_I420), "video size check failure\n");
+        if (plane)
+            primitives.chroma[m_chromaFormat].cu[g_maxLog2CUSize - 2].sub_ps(diff, MAX_CU_SIZE, fenc0, rec0, stride, stride);
+        else
+           primitives.cu[g_maxLog2CUSize - 2].sub_ps(diff, MAX_CU_SIZE, fenc0, rec0, stride, stride);
+    }
+    else
+    {
+        // path for non-square area (most in edge)
+        for(int y = 0; y < ctuHeight; y++)
+        {
+            for(int x = 0; x < ctuWidth; x++)
+            {
+                diff[y * MAX_CU_SIZE + x] = (fenc0[y * stride + x] - rec0[y * stride + x]);
+            }
+        }
+    }
 
     // SAO_BO:
     {
         if (m_param->bSaoNonDeblocked)
         {
-            skipB = plane ? 1 : 3;
-            skipR = plane ? 2 : 4;
+            skipB = 3;
+            skipR = 4;
         }
 
-        endX = (rpelx == picWidth) ? ctuWidth : ctuWidth - skipR;
-        endY = (bpely == picHeight) ? ctuHeight : ctuHeight - skipB;
+        endX = (rpelx == picWidth) ? ctuWidth : ctuWidth - skipR + plane_offset;
+        endY = (bpely == picHeight) ? ctuHeight : ctuHeight - skipB + plane_offset;
 
-        primitives.saoCuStatsBO(fenc0, rec0, stride, endX, endY, m_offsetOrg[plane][SAO_BO], m_count[plane][SAO_BO]);
+        primitives.saoCuStatsBO(diff, rec0, stride, endX, endY, m_offsetOrg[plane][SAO_BO], m_count[plane][SAO_BO]);
     }
 
     {
@@ -727,84 +755,82 @@ void SAO::calcSaoStatsCu(int addr, int plane)
         {
             if (m_param->bSaoNonDeblocked)
             {
-                skipB = plane ? 1 : 3;
-                skipR = plane ? 3 : 5;
+                skipB = 3;
+                skipR = 5;
             }
 
             startX = !lpelx;
-            endX   = (rpelx == picWidth) ? ctuWidth - 1 : ctuWidth - skipR;
+            endX   = (rpelx == picWidth) ? ctuWidth - 1 : ctuWidth - skipR + plane_offset;
 
-            primitives.saoCuStatsE0(fenc0 + startX, rec0 + startX, stride, endX - startX, ctuHeight - skipB, m_offsetOrg[plane][SAO_EO_0], m_count[plane][SAO_EO_0]);
+            primitives.saoCuStatsE0(diff + startX, rec0 + startX, stride, endX - startX, ctuHeight - skipB + plane_offset, m_offsetOrg[plane][SAO_EO_0], m_count[plane][SAO_EO_0]);
         }
 
         // SAO_EO_1: // dir: |
         {
             if (m_param->bSaoNonDeblocked)
             {
-                skipB = plane ? 2 : 4;
-                skipR = plane ? 2 : 4;
+                skipB = 4;
+                skipR = 4;
             }
 
-            fenc = fenc0;
             rec  = rec0;
 
             startY = !tpely;
-            endX   = (rpelx == picWidth) ? ctuWidth : ctuWidth - skipR;
-            endY   = (bpely == picHeight) ? ctuHeight - 1 : ctuHeight - skipB;
+            endX   = (rpelx == picWidth) ? ctuWidth : ctuWidth - skipR + plane_offset;
+            endY   = (bpely == picHeight) ? ctuHeight - 1 : ctuHeight - skipB + plane_offset;
             if (!tpely)
             {
-                fenc += stride;
                 rec += stride;
             }
 
             primitives.sign(upBuff1, rec, &rec[- stride], ctuWidth);
 
-            primitives.saoCuStatsE1(fenc0 + startY * stride, rec0 + startY * stride, stride, upBuff1, endX, endY - startY, m_offsetOrg[plane][SAO_EO_1], m_count[plane][SAO_EO_1]);
+            primitives.saoCuStatsE1(diff + startY * MAX_CU_SIZE, rec0 + startY * stride, stride, upBuff1, endX, endY - startY, m_offsetOrg[plane][SAO_EO_1], m_count[plane][SAO_EO_1]);
         }
 
         // SAO_EO_2: // dir: 135
         {
             if (m_param->bSaoNonDeblocked)
             {
-                skipB = plane ? 2 : 4;
-                skipR = plane ? 3 : 5;
+                skipB = 4;
+                skipR = 5;
             }
 
             fenc = fenc0;
             rec  = rec0;
 
             startX = !lpelx;
-            endX   = (rpelx == picWidth) ? ctuWidth - 1 : ctuWidth - skipR;
+            endX   = (rpelx == picWidth) ? ctuWidth - 1 : ctuWidth - skipR + plane_offset;
 
             startY = !tpely;
-            endY   = (bpely == picHeight) ? ctuHeight - 1 : ctuHeight - skipB;
+            endY   = (bpely == picHeight) ? ctuHeight - 1 : ctuHeight - skipB + plane_offset;
             if (!tpely)
             {
                 fenc += stride;
                 rec += stride;
             }
 
-            primitives.sign(&upBuff1[startX], &rec[startX], &rec[startX - stride - 1], (endX - startX));
+            primitives.sign(upBuff1, &rec[startX], &rec[startX - stride - 1], (endX - startX));
 
-            primitives.saoCuStatsE2(fenc0 + startX + startY * stride, rec0  + startX + startY * stride, stride, upBuff1 + startX, upBufft + startX, endX - startX, endY - startY, m_offsetOrg[plane][SAO_EO_2], m_count[plane][SAO_EO_2]);
+            primitives.saoCuStatsE2(diff + startX + startY * MAX_CU_SIZE, rec0  + startX + startY * stride, stride, upBuff1, upBufft, endX - startX, endY - startY, m_offsetOrg[plane][SAO_EO_2], m_count[plane][SAO_EO_2]);
         }
 
         // SAO_EO_3: // dir: 45
         {
             if (m_param->bSaoNonDeblocked)
             {
-                skipB = plane ? 2 : 4;
-                skipR = plane ? 3 : 5;
+                skipB = 4;
+                skipR = 5;
             }
 
             fenc = fenc0;
             rec  = rec0;
 
             startX = !lpelx;
-            endX   = (rpelx == picWidth) ? ctuWidth - 1 : ctuWidth - skipR;
+            endX   = (rpelx == picWidth) ? ctuWidth - 1 : ctuWidth - skipR + plane_offset;
 
             startY = !tpely;
-            endY   = (bpely == picHeight) ? ctuHeight - 1 : ctuHeight - skipB;
+            endY   = (bpely == picHeight) ? ctuHeight - 1 : ctuHeight - skipB + plane_offset;
 
             if (!tpely)
             {
@@ -812,9 +838,9 @@ void SAO::calcSaoStatsCu(int addr, int plane)
                 rec += stride;
             }
 
-            primitives.sign(&upBuff1[startX - 1], &rec[startX - 1], &rec[startX - 1 - stride + 1], (endX - startX + 1));
+            primitives.sign(upBuff1, &rec[startX - 1], &rec[startX - 1 - stride + 1], (endX - startX + 1));
 
-            primitives.saoCuStatsE3(fenc0 + startX + startY * stride, rec0  + startX + startY * stride, stride, upBuff1 + startX, endX - startX, endY - startY, m_offsetOrg[plane][SAO_EO_3], m_count[plane][SAO_EO_3]);
+            primitives.saoCuStatsE3(diff + startX + startY * MAX_CU_SIZE, rec0  + startX + startY * stride, stride, upBuff1 + 1, endX - startX, endY - startY, m_offsetOrg[plane][SAO_EO_3], m_count[plane][SAO_EO_3]);
         }
     }
 }
@@ -825,9 +851,10 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
 
     int x, y;
     const CUData* cu = frame->m_encData->getPicCTU(addr);
+    const PicYuv* reconPic = m_frame->m_reconPic;
     const pixel* fenc;
     const pixel* rec;
-    intptr_t stride = m_frame->m_reconPic->m_stride;
+    intptr_t stride = reconPic->m_stride;
     uint32_t picWidth  = m_param->sourceWidth;
     uint32_t picHeight = m_param->sourceHeight;
     int ctuWidth  = g_maxCUSize;
@@ -857,11 +884,12 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
     memset(m_countPreDblk[addr], 0, sizeof(PerPlane));
     memset(m_offsetOrgPreDblk[addr], 0, sizeof(PerPlane));
 
+    int plane_offset = 0;
     for (int plane = 0; plane < NUM_PLANE; plane++)
     {
         if (plane == 1)
         {
-            stride = frame->m_reconPic->m_strideC;
+            stride = reconPic->m_strideC;
             picWidth  >>= m_hChromaShift;
             picHeight >>= m_vChromaShift;
             ctuWidth  >>= m_hChromaShift;
@@ -874,14 +902,14 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
 
         // SAO_BO:
 
-        skipB = plane ? 1 : 3;
-        skipR = plane ? 2 : 4;
+        skipB = 3 - plane_offset;
+        skipR = 4 - plane_offset;
 
         stats = m_offsetOrgPreDblk[addr][plane][SAO_BO];
         count = m_countPreDblk[addr][plane][SAO_BO];
 
         const pixel* fenc0 = m_frame->m_fencPic->getPlaneAddr(plane, addr);
-        const pixel* rec0  = m_frame->m_reconPic->getPlaneAddr(plane, addr);
+        const pixel* rec0 = reconPic->getPlaneAddr(plane, addr);
         fenc = fenc0;
         rec  = rec0;
 
@@ -903,8 +931,8 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
 
         // SAO_EO_0: // dir: -
         {
-            skipB = plane ? 1 : 3;
-            skipR = plane ? 3 : 5;
+            skipB = 3 - plane_offset;
+            skipR = 5 - plane_offset;
 
             stats = m_offsetOrgPreDblk[addr][plane][SAO_EO_0];
             count = m_countPreDblk[addr][plane][SAO_EO_0];
@@ -939,8 +967,8 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
 
         // SAO_EO_1: // dir: |
         {
-            skipB = plane ? 2 : 4;
-            skipR = plane ? 2 : 4;
+            skipB = 4 - plane_offset;
+            skipR = 4 - plane_offset;
 
             stats = m_offsetOrgPreDblk[addr][plane][SAO_EO_1];
             count = m_countPreDblk[addr][plane][SAO_EO_1];
@@ -984,8 +1012,8 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
 
         // SAO_EO_2: // dir: 135
         {
-            skipB = plane ? 2 : 4;
-            skipR = plane ? 3 : 5;
+            skipB = 4 - plane_offset;
+            skipR = 5 - plane_offset;
 
             stats = m_offsetOrgPreDblk[addr][plane][SAO_EO_2];
             count = m_countPreDblk[addr][plane][SAO_EO_2];
@@ -1036,8 +1064,8 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
 
         // SAO_EO_3: // dir: 45
         {
-            skipB = plane ? 2 : 4;
-            skipR = plane ? 3 : 5;
+            skipB = 4 - plane_offset;
+            skipR = 5 - plane_offset;
 
             stats = m_offsetOrgPreDblk[addr][plane][SAO_EO_3];
             count = m_countPreDblk[addr][plane][SAO_EO_3];
@@ -1083,6 +1111,7 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
                 fenc += stride;
             }
         }
+        plane_offset = 2;
     }
 }
 
@@ -1519,7 +1548,7 @@ void SAO::sao2ChromaParamDist(SAOParam* saoParam, int addr, int addrUp, int addr
 }
 
 // NOTE: must put in namespace X265_NS since we need class SAO
-void saoCuStatsBO_c(const pixel *fenc, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count)
+void saoCuStatsBO_c(const int16_t *diff, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count)
 {
     int x, y;
     const int boShift = X265_DEPTH - SAO_BO_BITS;
@@ -1529,20 +1558,22 @@ void saoCuStatsBO_c(const pixel *fenc, const pixel *rec, intptr_t stride, int en
         for (x = 0; x < endX; x++)
         {
             int classIdx = 1 + (rec[x] >> boShift);
-            stats[classIdx] += (fenc[x] - rec[x]);
+            stats[classIdx] += diff[x];
             count[classIdx]++;
         }
 
-        fenc += stride;
+        diff += MAX_CU_SIZE;
         rec += stride;
     }
 }
 
-void saoCuStatsE0_c(const pixel *fenc, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count)
+void saoCuStatsE0_c(const int16_t *diff, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count)
 {
     int x, y;
     int32_t tmp_stats[SAO::NUM_EDGETYPE];
     int32_t tmp_count[SAO::NUM_EDGETYPE];
+
+    X265_CHECK(endX <= MAX_CU_SIZE, "endX too big\n");
 
     memset(tmp_stats, 0, sizeof(tmp_stats));
     memset(tmp_count, 0, sizeof(tmp_count));
@@ -1558,11 +1589,11 @@ void saoCuStatsE0_c(const pixel *fenc, const pixel *rec, intptr_t stride, int en
             signLeft = -signRight;
 
             X265_CHECK(edgeType <= 4, "edgeType check failure\n");
-            tmp_stats[edgeType] += (fenc[x] - rec[x]);
+            tmp_stats[edgeType] += diff[x];
             tmp_count[edgeType]++;
         }
 
-        fenc += stride;
+        diff += MAX_CU_SIZE;
         rec += stride;
     }
 
@@ -1573,7 +1604,7 @@ void saoCuStatsE0_c(const pixel *fenc, const pixel *rec, intptr_t stride, int en
     }
 }
 
-void saoCuStatsE1_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count)
+void saoCuStatsE1_c(const int16_t *diff, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count)
 {
     X265_CHECK(endX <= MAX_CU_SIZE, "endX check failure\n");
     X265_CHECK(endY <= MAX_CU_SIZE, "endY check failure\n");
@@ -1594,10 +1625,10 @@ void saoCuStatsE1_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t
             uint32_t edgeType = signDown + upBuff1[x] + 2;
             upBuff1[x] = (int8_t)(-signDown);
 
-            tmp_stats[edgeType] += (fenc[x] - rec[x]);
+            tmp_stats[edgeType] += diff[x];
             tmp_count[edgeType]++;
         }
-        fenc += stride;
+        diff += MAX_CU_SIZE;
         rec += stride;
     }
 
@@ -1608,7 +1639,7 @@ void saoCuStatsE1_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t
     }
 }
 
-void saoCuStatsE2_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int8_t *upBufft, int endX, int endY, int32_t *stats, int32_t *count)
+void saoCuStatsE2_c(const int16_t *diff, const pixel *rec, intptr_t stride, int8_t *upBuff1, int8_t *upBufft, int endX, int endY, int32_t *stats, int32_t *count)
 {
     X265_CHECK(endX < MAX_CU_SIZE, "endX check failure\n");
     X265_CHECK(endY < MAX_CU_SIZE, "endY check failure\n");
@@ -1629,14 +1660,14 @@ void saoCuStatsE2_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t
             X265_CHECK(signDown == signOf(rec[x] - rec[x + stride + 1]), "signDown check failure\n");
             uint32_t edgeType = signDown + upBuff1[x] + 2;
             upBufft[x + 1] = (int8_t)(-signDown);
-            tmp_stats[edgeType] += (fenc[x] - rec[x]);
+            tmp_stats[edgeType] += diff[x];
             tmp_count[edgeType]++;
         }
 
         std::swap(upBuff1, upBufft);
 
         rec += stride;
-        fenc += stride;
+        diff += MAX_CU_SIZE;
     }
 
     for (x = 0; x < SAO::NUM_EDGETYPE; x++)
@@ -1646,7 +1677,7 @@ void saoCuStatsE2_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t
     }
 }
 
-void saoCuStatsE3_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count)
+void saoCuStatsE3_c(const int16_t *diff, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count)
 {
     X265_CHECK(endX < MAX_CU_SIZE, "endX check failure\n");
     X265_CHECK(endY < MAX_CU_SIZE, "endY check failure\n");
@@ -1668,14 +1699,14 @@ void saoCuStatsE3_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t
 
             uint32_t edgeType = signDown + upBuff1[x] + 2;
             upBuff1[x - 1] = (int8_t)(-signDown);
-            tmp_stats[edgeType] += (fenc[x] - rec[x]);
+            tmp_stats[edgeType] += diff[x];
             tmp_count[edgeType]++;
         }
 
         upBuff1[endX - 1] = signOf(rec[endX - 1 + stride] - rec[endX]);
 
         rec += stride;
-        fenc += stride;
+        diff += MAX_CU_SIZE;
     }
 
     for (x = 0; x < SAO::NUM_EDGETYPE; x++)

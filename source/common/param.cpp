@@ -241,6 +241,10 @@ void x265_param_default(x265_param* param)
     param->vui.defDispWinRightOffset = 0;
     param->vui.defDispWinTopOffset = 0;
     param->vui.defDispWinBottomOffset = 0;
+    param->maxCLL = 0;
+    param->maxFALL = 0;
+    param->minLuma = 0;
+    param->maxLuma = (1 << X265_DEPTH) - 1;
 }
 
 int x265_param_default_preset(x265_param* param, const char* preset, const char* tune)
@@ -608,6 +612,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT2("constrained-intra", "cip") p->bEnableConstrainedIntra = atobool(value);
     OPT("fast-intra") p->bEnableFastIntra = atobool(value);
     OPT("open-gop") p->bOpenGOP = atobool(value);
+    OPT("intra-refresh") p->bIntraRefresh = atobool(value);
     OPT("lookahead-slices") p->lookaheadSlices = atoi(value);
     OPT("scenecut")
     {
@@ -854,7 +859,9 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("analysis-file") p->analysisFileName = strdup(value);
     OPT("qg-size") p->rc.qgSize = atoi(value);
     OPT("master-display") p->masteringDisplayColorVolume = strdup(value);
-    OPT("max-cll") p->contentLightLevelInfo = strdup(value);
+    OPT("max-cll") bError |= sscanf(value, "%hu,%hu", &p->maxCLL, &p->maxFALL) != 2;
+    OPT("min-luma") p->minLuma = (uint16_t)atoi(value);
+    OPT("max-luma") p->maxLuma = (uint16_t)atoi(value);
     else
         return X265_PARAM_BAD_NAME;
 #undef OPT
@@ -1447,6 +1454,7 @@ char *x265_param2string(x265_param* p)
     BOOL(p->bSaoNonDeblocked, "sao-non-deblock");
     BOOL(p->bBPyramid, "b-pyramid");
     BOOL(p->rc.cuTree, "cutree");
+    BOOL(p->bIntraRefresh, "intra-refresh");
     s += sprintf(s, " rc=%s", p->rc.rateControlMode == X265_RC_ABR ? (
          p->rc.bStatRead ? "2 pass" : p->rc.bitrate == p->rc.vbvMaxBitrate ? "cbr" : "abr")
          : p->rc.rateControlMode == X265_RC_CRF ? "crf" : "cqp");

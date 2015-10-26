@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Steve Borho <steve@borho.org>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,6 +41,8 @@ protected:
     enum { TEST_CASES = 3 };
     enum { SMAX = 1 << 12 };
     enum { SMIN = -1 << 12 };
+    enum { RMAX = PIXEL_MAX - PIXEL_MIN }; //The maximum value obtained by subtracting pixel values (residual max)
+    enum { RMIN = PIXEL_MIN - PIXEL_MAX }; //The minimum value obtained by subtracting pixel values (residual min)
 
     ALIGN_VAR_32(pixel, pbuf1[BUFFSIZE]);
     pixel    pbuf2[BUFFSIZE];
@@ -64,6 +67,7 @@ protected:
     uint16_t ushort_test_buff[TEST_CASES][BUFFSIZE];
     uint8_t  uchar_test_buff[TEST_CASES][BUFFSIZE];
     double   double_test_buff[TEST_CASES][BUFFSIZE];
+    int16_t  residual_test_buff[TEST_CASES][BUFFSIZE];
 
     bool check_pixelcmp(pixelcmp_t ref, pixelcmp_t opt);
     bool check_pixel_sse(pixel_sse_t ref, pixel_sse_t opt);
@@ -116,6 +120,10 @@ protected:
     bool check_findPosFirstLast(findPosFirstLast_t ref, findPosFirstLast_t opt);
     bool check_costCoeffNxN(costCoeffNxN_t ref, costCoeffNxN_t opt);
     bool check_costCoeffRemain(costCoeffRemain_t ref, costCoeffRemain_t opt);
+    bool check_costC1C2Flag(costC1C2Flag_t ref, costC1C2Flag_t opt);
+    bool check_planeClipAndMax(planeClipAndMax_t ref, planeClipAndMax_t opt);
+    bool check_pelFilterLumaStrong_V(pelFilterLumaStrong_t ref, pelFilterLumaStrong_t opt);
+    bool check_pelFilterLumaStrong_H(pelFilterLumaStrong_t ref, pelFilterLumaStrong_t opt);
 
 public:
 

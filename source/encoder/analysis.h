@@ -3,6 +3,7 @@
 *
 * Authors: Deepthi Nandakumar <deepthi@multicorewareinc.com>
 *          Steve Borho <steve@borho.org>
+*          Min Chen <chenm003@163.com>
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -103,16 +104,17 @@ public:
 protected:
 
     /* Analysis data for load/save modes, keeps getting incremented as CTU analysis proceeds and data is consumed or read */
-    analysis_intra_data* m_reuseIntraDataCTU;
     analysis_inter_data* m_reuseInterDataCTU;
     int32_t*             m_reuseRef;
     uint32_t*            m_reuseBestMergeCand;
+
+    uint32_t m_splitRefIdx[4];
 
     /* full analysis for an I-slice CU */
     void compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom, uint32_t &zOrder, int32_t qp);
 
     /* full analysis for a P or B slice CU */
-    void compressInterCU_dist(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp);
+    uint32_t compressInterCU_dist(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp);
     uint32_t compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp);
     uint32_t compressInterCU_rd5_6(const CUData& parentCTU, const CUGeom& cuGeom, uint32_t &zOrder, int32_t qp);
 
@@ -144,8 +146,6 @@ protected:
     /* check whether current mode is the new best */
     inline void checkBestMode(Mode& mode, uint32_t depth)
     {
-        X265_CHECK(mode.ok(), "mode costs are uninitialized\n");
-
         ModeDepth& md = m_modeDepth[depth];
         if (md.bestMode)
         {

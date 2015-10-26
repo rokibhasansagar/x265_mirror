@@ -25,6 +25,7 @@
  *****************************************************************************/
 
 #include "common.h"
+#include "slicetype.h"      // LOWRES_COST_MASK
 #include "primitives.h"
 #include "x265.h"
 
@@ -117,9 +118,9 @@ void sad_x4(const pixel* pix1, const pixel* pix2, const pixel* pix3, const pixel
 }
 
 template<int lx, int ly, class T1, class T2>
-sse_ret_t sse(const T1* pix1, intptr_t stride_pix1, const T2* pix2, intptr_t stride_pix2)
+sse_t sse(const T1* pix1, intptr_t stride_pix1, const T2* pix2, intptr_t stride_pix2)
 {
-    sse_ret_t sum = 0;
+    sse_t sum = 0;
     int tmp;
 
     for (int y = 0; y < ly; y++)
@@ -403,9 +404,9 @@ int sa8d16(const pixel* pix1, intptr_t i_pix1, const pixel* pix2, intptr_t i_pix
 }
 
 template<int size>
-sse_ret_t pixel_ssd_s_c(const int16_t* a, intptr_t dstride)
+sse_t pixel_ssd_s_c(const int16_t* a, intptr_t dstride)
 {
-    sse_ret_t sum = 0;
+    sse_t sum = 0;
     for (int y = 0; y < size; y++)
     {
         for (int x = 0; x < size; x++)
@@ -960,19 +961,57 @@ static void planecopy_sp_shl_c(const uint16_t* src, intptr_t srcStride, pixel* d
 /* Estimate the total amount of influence on future quality that could be had if we
  * were to improve the reference samples used to inter predict any given CU. */
 static void estimateCUPropagateCost(int* dst, const uint16_t* propagateIn, const int32_t* intraCosts, const uint16_t* interCosts,
-                             const int32_t* invQscales, const double* fpsFactor, int len)
+                                    const int32_t* invQscales, const double* fpsFactor, int len)
 {
-    double fps = *fpsFactor / 256;
+    double fps = *fpsFactor / 256;  // range[0.01, 1.00]
 
     for (int i = 0; i < len; i++)
     {
-        double intraCost       = intraCosts[i] * invQscales[i];
-        double propagateAmount = (double)propagateIn[i] + intraCost * fps;
-        double propagateNum    = (double)intraCosts[i] - (interCosts[i] & ((1 << 14) - 1));
-        double propagateDenom  = (double)intraCosts[i];
+        int intraCost = intraCosts[i];
+        int interCost = X265_MIN(intraCosts[i], interCosts[i] & LOWRES_COST_MASK);
+        double propagateIntra  = intraCost * invQscales[i]; // Q16 x Q8.8 = Q24.8
+        double propagateAmount = (double)propagateIn[i] + propagateIntra * fps; // Q16.0 + Q24.8 x Q0.x = Q25.0
+        double propagateNum    = (double)(intraCost - interCost); // Q32 - Q32 = Q33.0
+
+#if 0
+        // algorithm that output match to asm
+        float intraRcp = (float)1.0f / intraCost;   // VC can't mapping this into RCPPS
+        float intraRcpError1 = (float)intraCost * (float)intraRcp;
+        intraRcpError1 *= (float)intraRcp;
+        float intraRcpError2 = intraRcp + intraRcp;
+        float propagateDenom = intraRcpError2 - intraRcpError1;
+        dst[i] = (int)(propagateAmount * propagateNum * (double)propagateDenom + 0.5);
+#else
+        double propagateDenom  = (double)intraCost;             // Q32
         dst[i] = (int)(propagateAmount * propagateNum / propagateDenom + 0.5);
+#endif
     }
 }
+
+static pixel planeClipAndMax_c(pixel *src, intptr_t stride, int width, int height, uint64_t *outsum, const pixel minPix, const pixel maxPix)
+{
+    pixel maxLumaLevel = 0;
+    uint64_t sumLuma = 0;
+
+    for (int r = 0; r < height; r++)
+    {
+        for (int c = 0; c < width; c++)
+        {
+            /* Clip luma of source picture to max and min values before extending edges of picYuv */
+            src[c] = x265_clip3((pixel)minPix, (pixel)maxPix, src[c]);
+
+            /* Determine maximum and average luma level in a picture */
+            maxLumaLevel = X265_MAX(src[c], maxLumaLevel);
+            sumLuma += src[c];
+        }
+
+        src += stride;
+    }
+
+    *outsum = sumLuma;
+    return maxLumaLevel;
+}
+
 }  // end anonymous namespace
 
 namespace X265_NS {
@@ -1258,6 +1297,7 @@ void setupPixelPrimitives_c(EncoderPrimitives &p)
     p.planecopy_cp = planecopy_cp_c;
     p.planecopy_sp = planecopy_sp_c;
     p.planecopy_sp_shl = planecopy_sp_shl_c;
+    p.planeClipAndMax = planeClipAndMax_c;
     p.propagateCost = estimateCUPropagateCost;
 }
 }
