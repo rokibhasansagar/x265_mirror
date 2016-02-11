@@ -280,7 +280,7 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools)
             }
             else if (*nodeStr == '-')
                 threadsPerPool[i] = 0;
-			else if (*nodeStr == '*' || !strcasecmp(nodeStr, "NULL"))
+            else if (*nodeStr == '*' || !strcasecmp(nodeStr, "NULL"))
             {
                 for (int j = i; j < numNumaNodes; j++)
                 {
@@ -528,6 +528,10 @@ int ThreadPool::getCpuCount()
     SYSTEM_INFO sysinfo;
     GetSystemInfo(&sysinfo);
     return sysinfo.dwNumberOfProcessors;
+#elif __unix__ && X265_ARCH_ARM
+    /* Return the number of processors configured by OS. Because, most embedded linux distributions
+     * uses only one processor as the scheduler doesn't have enough work to utilize all processors */
+    return sysconf(_SC_NPROCESSORS_CONF);
 #elif __unix__
     return sysconf(_SC_NPROCESSORS_ONLN);
 #elif MACOS
