@@ -99,6 +99,7 @@ typedef struct x265_analysis_data
     uint32_t         numCUsInFrame;
     uint32_t         numPartitions;
     int              bScenecut;
+    void*            wt;
     void*            interData;
     void*            intraData;
 } x265_analysis_data;
@@ -1379,6 +1380,16 @@ typedef struct x265_param
      * Auto-enabled when max-cll, max-fall, or mastering display info is specified.
      * Default is disabled */
     int       bEmitHDRSEI;
+
+    /* Enable luma and chroma offsets for HDR/WCG content.
+     * Default is disabled */
+    int       bHDROpt;
+
+    /* A value between 1 and 10 (both inclusive) determines the level of
+    * information stored/reused in save/load analysis-mode. Higher the refine
+    * level higher the informtion stored/reused. Default is 5 */
+    int       analysisRefineLevel;
+
 } x265_param;
 
 /* x265_param_alloc:

@@ -816,6 +816,25 @@ not match.
 	Specify a filename for analysis data (see :option:`--analysis-mode`)
 	If no filename is specified, x265_analysis.dat is used.
 
+.. option:: --refine-level <1..10>
+
+	Amount of information stored/reused in :option:`--analysis-mode` is distributed across levels.
+	Higher the value, higher the information stored/reused, faster the encode. Default 5.
+
+	Note that --refine-level must be paired with analysis-mode.
+
+	+--------+-----------------------------------------+
+	| Level  | Description                             |
+	+========+=========================================+
+	| 1      | Lookahead information                   |
+	+--------+-----------------------------------------+
+	| 2 to 4 | Level 1 + intra/inter modes, ref's      |
+	+--------+-----------------------------------------+
+	| 5 to 9 | Level 2 + rect-amp                      |
+	+--------+-----------------------------------------+
+	| 10     | Level 5 + Full CU analysis-info         |
+	+--------+-----------------------------------------+
+
 Options which affect the transform unit quad-tree, sometimes referred to
 as the residual quad-tree (RQT).
 
@@ -1845,6 +1864,12 @@ VUI fields must be manually specified.
 	automatically when :option`--master-display` or :option`--max-cll` is
 	specified. Useful when there is a desire to signal 0 values for max-cll
 	and max-fall. Default disabled.
+	
+.. option:: --hdr-opt, --no-hdr-opt
+
+	Add luma and chroma offsets for HDR/WCG content.
+	Input video should be 10 bit 4:2:0. Applicable for HDR content.
+	Default disabled. **Experimental Feature**
 
 .. option:: --min-luma <integer>
 

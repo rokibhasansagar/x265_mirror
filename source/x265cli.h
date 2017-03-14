@@ -249,6 +249,7 @@ static const struct option long_options[] =
     { "no-multi-pass-opt-rps", no_argument, NULL, 0 },
     { "analysis-mode",  required_argument, NULL, 0 },
     { "analysis-file",  required_argument, NULL, 0 },
+    { "refine-level",   required_argument, NULL, 0 },
     { "strict-cbr",           no_argument, NULL, 0 },
     { "temporal-layers",      no_argument, NULL, 0 },
     { "no-temporal-layers",   no_argument, NULL, 0 },
@@ -263,6 +264,8 @@ static const struct option long_options[] =
     { "no-ssim-rd",           no_argument, NULL, 0 },
     { "hdr",                  no_argument, NULL, 0 },
     { "no-hdr",               no_argument, NULL, 0 },
+    { "hdr-opt",              no_argument, NULL, 0 },
+    { "no-hdr-opt",           no_argument, NULL, 0 },
     { 0, 0, 0, 0 },
     { 0, 0, 0, 0 },
     { 0, 0, 0, 0 },
@@ -421,6 +424,7 @@ static void showHelp(x265_param *param)
     H0("   --[no-]strict-cbr             Enable stricter conditions and tolerance for bitrate deviations in CBR mode. Default %s\n", OPT(param->rc.bStrictCbr));
     H0("   --analysis-mode <string|int>  save - Dump analysis info into file, load - Load analysis buffers from the file. Default %d\n", param->analysisMode);
     H0("   --analysis-file <filename>    Specify file name used for either dumping or reading analysis data.\n");
+    H0("   --refine-level <1..10>        Level of analysis refinement indicates amount of info stored/reused in save/load mode, 1:least....10:most. Default %d\n", param->analysisRefineLevel);
     H0("   --aq-mode <integer>           Mode for Adaptive Quantization - 0:none 1:uniform AQ 2:auto variance 3:auto variance with bias to dark scenes. Default %d\n", param->rc.aqMode);
     H0("   --aq-strength <float>         Reduces blocking and blurring in flat and textured areas (0 to 3.0). Default %.2f\n", param->rc.aqStrength);
     H0("   --[no-]aq-motion              Adaptive Quantization based on the relative motion of each CU w.r.t., frame. Default %s\n", OPT(param->bOptCUDeltaQP));
@@ -471,6 +475,7 @@ static void showHelp(x265_param *param)
     H0("                                    format: G(x,y)B(x,y)R(x,y)WP(x,y)L(max,min)\n");
     H0("   --max-cll <string>            Emit content light level info SEI as \"cll,fall\" (HDR)\n");
     H0("   --[no-]hdr                    Control dumping of HDR SEI packet. If max-cll or master-display has non-zero values, this is enabled. Default %s\n", OPT(param->bEmitHDRSEI));
+    H0("   --[no-]hdr-opt                Add luma and chroma offsets for HDR/WCG content. Default %s\n", OPT(param->bHDROpt));
     H0("   --min-luma <integer>          Minimum luma plane value of input source picture\n");
     H0("   --max-luma <integer>          Maximum luma plane value of input source picture\n");
     H0("\nBitstream options:\n");

@@ -270,6 +270,8 @@ void x265_param_default(x265_param* param)
     param->bOptRefListLengthPPS = 1;
     param->bOptCUDeltaQP        = 0;
     param->bAQMotion = 0;
+    param->bHDROpt = 0;
+    param->analysisRefineLevel = 5;
 
 }
 
@@ -932,6 +934,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("multi-pass-opt-distortion") p->analysisMultiPassDistortion = atobool(value);
         OPT("aq-motion") p->bAQMotion = atobool(value);
         OPT("dynamic-rd") p->dynamicRd = atof(value);
+        OPT("refine-level") p->analysisRefineLevel = atoi(value);
         OPT("ssim-rd")
         {
             int bval = atobool(value);
@@ -943,6 +946,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
             }
         }
         OPT("hdr") p->bEmitHDRSEI = atobool(value);
+        OPT("hdr-opt") p->bHDROpt = atobool(value);
         else
             return X265_PARAM_BAD_NAME;
     }
@@ -1275,6 +1279,8 @@ int x265_check_params(x265_param* param)
           "Strict-cbr cannot be applied without specifying target bitrate or vbv bufsize");
     CHECK(param->analysisMode && (param->analysisMode < X265_ANALYSIS_OFF || param->analysisMode > X265_ANALYSIS_LOAD),
         "Invalid analysis mode. Analysis mode 0: OFF 1: SAVE : 2 LOAD");
+    CHECK(param->analysisMode && (param->analysisRefineLevel < 1 || param->analysisRefineLevel > 10),
+        "Invalid analysis refine level. Value must be between 1 and 10 (inclusive)");
     CHECK(param->rc.qpMax < QP_MIN || param->rc.qpMax > QP_MAX_MAX,
         "qpmax exceeds supported range (0 to 69)");
     CHECK(param->rc.qpMin < QP_MIN || param->rc.qpMin > QP_MAX_MAX,
@@ -1648,6 +1654,8 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bOptCUDeltaQP, "opt-cu-delta-qp");
     BOOL(p->bAQMotion, "aq-motion");
     BOOL(p->bEmitHDRSEI, "hdr");
+    BOOL(p->bHDROpt, "hdr-opt");
+    s += sprintf(s, " refine-level=%d", p->analysisRefineLevel);
 #undef BOOL
     return buf;
 }
@@ -1657,10 +1665,10 @@ bool parseLambdaFile(x265_param* param)
     if (!param->rc.lambdaFileName)
         return false;
 
-    FILE *lfn = fopen(param->rc.lambdaFileName, "r");
+    FILE *lfn = x265_fopen(param->rc.lambdaFileName, "r");
     if (!lfn)
     {
-        x265_log(param, X265_LOG_ERROR, "unable to read lambda file <%s>\n", param->rc.lambdaFileName);
+        x265_log_file(param, X265_LOG_ERROR, "unable to read lambda file <%s>\n", param->rc.lambdaFileName);
         return true;
     }
 
