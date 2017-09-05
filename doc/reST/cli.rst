@@ -893,28 +893,44 @@ will not reuse analysis if slice type parameters do not match.
        This option should be coupled with analysis-reuse-mode option, --analysis-reuse-level 10.
        The ctu size of load should be double the size of save. Default 0.
 
-.. option:: --refine-intra <0|1|2>
+.. option:: --refine-intra <0..3>
 	
 	Enables refinement of intra blocks in current encode. 
 	
-	Level 0 - Forces both mode and depth from the previous encode.
+	Level 0 - Forces both mode and depth from the save encode.
 	
-	Level 1 - Evaluates all intra modes for blocks of size one smaller than 
-	the min-cu-size of the incoming analysis data from the previous encode, 
-	forces modes for blocks of larger size.
+	Level 1 - Evaluates all intra modes at current depth(n) and at depth 
+	(n+1) when current block size is one greater than the min-cu-size.
+	Forces modes for larger blocks.
 	
-	Level 2 - Evaluates all intra modes for	blocks of size one smaller than 
-	the min-cu-size of the incoming analysis data from the previous encode. 
-	For larger blocks, force only depth when angular mode is chosen by the 
-	previous encode, force depth and mode when other intra modes are chosen.
+	Level 2 - In addition to the functionality of level 1, at all depths, force 
+	(a) only depth when angular mode is chosen by the save encode.
+	(b) depth and mode when other intra modes are chosen by the save encode.
+	
+	Level 3 - Perform analysis of intra modes for depth reused from first encode.
 	
 	Default 0.
 	
-.. option:: --refine-inter-depth
+.. option:: --refine-inter <0..3>
 
-	Enables refinement of inter blocks in current encode. Evaluates all 
-	inter modes for blocks of size one smaller than the min-cu-size of the 
-	incoming analysis data from the previous encode. Default disabled.
+	Enables refinement of inter blocks in current encode. 
+	
+	Level 0 - Forces both mode and depth from the save encode.
+	
+	Level 1 - Evaluates all inter modes at current depth(n) and at depth 
+	(n+1) when current block size is one greater than the min-cu-size.
+	Forces modes for larger blocks.
+	
+	Level 2 - In addition to the functionality of level 1, restricts the modes 
+	evaluated when specific modes are decided as the best mode by the save encode.
+	
+	2nx2n in save encode - disable re-evaluation of rect and amp.
+	
+	skip in save encode  - re-evaluates only skip, merge and 2nx2n modes.
+	
+	Level 3 - Perform analysis of inter modes while reusing depths from the save encode.
+	
+	Default 0.
 
 .. option:: --refine-mv
 	
@@ -1405,6 +1421,16 @@ Slice decision options
 .. option:: --b-pyramid, --no-b-pyramid
 
 	Use B-frames as references, when possible. Default enabled
+	
+.. option:: --force-flush <integer>
+
+	Force the encoder to flush frames. Default is 0.
+	
+	Values:
+	0 - flush the encoder only when all the input pictures are over.
+	1 - flush all the frames even when the input is not over. 
+	    slicetype decision may change with this option.
+	2 - flush the slicetype decided frames only.     
 
 Quality, rate control and rate distortion options
 =================================================
@@ -1886,6 +1912,9 @@ VUI fields must be manually specified.
 	7. smpte240m
 	8. film
 	9. bt2020
+    10. smpte-st-428
+    11. smpte-rp-431
+    12. smpte-eg-432
 
 .. option:: --transfer <integer|string>
 
@@ -1926,6 +1955,10 @@ VUI fields must be manually specified.
 	8. YCgCo
 	9. bt2020nc
 	10. bt2020c
+    11. smpte-st-2085
+    12. chroma-nc
+    13. chroma-c
+    14. ictcp
 
 .. option:: --chromaloc <0..5>
 
