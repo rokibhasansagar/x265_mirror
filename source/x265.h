@@ -614,7 +614,7 @@ typedef struct x265_vmaf_commondata
     char *pool;
 }x265_vmaf_commondata;
 
-static const x265_vmaf_commondata vcd[] = {NULL, (char *)"/usr/local/share/model/vmaf_v0.6.1.pkl", NULL, NULL, 0, 0, 0, 0, 0, 0, 0, NULL};
+static const x265_vmaf_commondata vcd[] = { { NULL, (char *)"/usr/local/share/model/vmaf_v0.6.1.pkl", NULL, NULL, 0, 0, 0, 0, 0, 0, 0, NULL } };
 
 /* x265 input parameters
  *
@@ -629,14 +629,6 @@ typedef struct x265_param
      * somehow flawed on your target hardware. The asm function tables are
      * process global, the first encoder configures them for all encoders */
     int       cpuid;
-     /*==Assembly features ==*/
-     /*  x265_param_parse() will detect if the avx512 is enabled (in cli )and set 
-     *  bEnableavx512 to 1 to use avx512 SIMD. By default this flag will not be set , 
-     *  hence the encoding will happen without avx512 assembly primitives even if the cpu has 
-     *  avx512 capabilities. 
-     *  Ensure to use --asm avx512 if you need to encode with avx512 assembly primitives*/
-    int     bEnableavx512;
-    char*   asmname;
     /*== Parallelism Features ==*/
 
     /* Number of concurrently encoded frames between 1 and X265_MAX_FRAME_THREADS
