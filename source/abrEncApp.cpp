@@ -165,7 +165,7 @@ namespace X265_NS {
     {
         if (m_parent->m_numEncodes > 1)
             setReuseLevel();
-                
+
         if (!(m_cliopt.enableScaler && m_id))
             m_reader = new Reader(m_id, this);
         else
@@ -395,7 +395,7 @@ namespace X265_NS {
         }
 
 ret:
-        //increment analysis Write counter 
+        //increment analysis Write counter
         m_parent->m_analysisWriteCnt[m_id].incr();
         m_parent->m_analysisWrite[m_id][index].incr();
         return;
@@ -837,9 +837,11 @@ ret:
             m_cliopt.output->closeFile(largest_pts, second_largest_pts);
 
             if (b_ctrl_c)
+            {
                 general_log(m_param, NULL, X265_LOG_INFO, "aborted at input frame %d, output frame %d in %s\n",
                     m_cliopt.seek + inFrameCount, stats.encodedPictureCount, profileName);
-
+                m_input->stopReader();
+            }
             api->param_free(m_param);
 
             X265_FREE(errorBuf);
@@ -1074,7 +1076,7 @@ ret:
             }
 
             x265_picture* dest = m_parentEnc->m_parent->m_inputPicBuffer[m_id][writeIdx];
-            if (m_input->readPicture(*src))
+            if (m_input->readPicture(*src) && !b_ctrl_c)
             {
                 dest->poc = src->poc;
                 dest->pts = src->pts;

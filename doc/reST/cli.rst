@@ -632,7 +632,7 @@ Profile, Level, Tier
 	auto-detection by the encoder. If specified, the encoder will
 	attempt to bring the encode specifications within that specified
 	level. If the encoder is unable to reach the level it issues a
-	warning and aborts the encode. The requested level will be signaled 
+	warning and aborts the encode. The requested level will be signaled
 	in the bitstream even if it is higher than the actual level.
 
 	Beware, specifying a decoder level will force the encoder to enable
@@ -1328,7 +1328,7 @@ Temporal / motion search options
 	Search range for HME level 0, 1 and 2.
 	The Search Range for each HME level must be between 0 and 32768(excluding).
 	Default search range is 16,32,48 for level 0,1,2 respectively.
-	
+
 .. option:: --mcstf, --no-mcstf
 
     Enable Motion Compensated Temporal filtering.
@@ -1733,7 +1733,7 @@ Quality, rate control and rate distortion options
 	ignored. Slower presets will generally achieve better compression
 	efficiency (and generate smaller bitstreams). Default disabled.
 
-.. option:: --aq-mode <0|1|2|3|4>
+.. option:: --aq-mode <0|1|2|3|4|5>
 
 	Adaptive Quantization operating mode. Raise or lower per-block
 	quantization based on complexity analysis of the source image. The
@@ -1745,9 +1745,10 @@ Quality, rate control and rate distortion options
 	1. AQ enabled 
 	2. AQ enabled with auto-variance **(default)**
 	3. AQ enabled with auto-variance and bias to dark scenes. This is 
-	recommended for 8-bit encodes or low-bitrate 10-bit encodes, to 
-	prevent color banding/blocking. 
+	recommended for 8-bit encodes or low-bitrate 10-bit encodes, to
+	prevent color banding/blocking.
 	4. AQ enabled with auto-variance and edge information.
+	5. AQ enabled with auto-variance, edge information, and bias to dark scenes.
 
 .. option:: --aq-strength <float>
 
@@ -1759,10 +1760,17 @@ Quality, rate control and rate distortion options
 	Default 1.0.
 	**Range of values:** 0.0 to 3.0
 
+.. option:: --aq-bias-strength <float>
+
+	Adjust the strength of dark scene bias in AQ modes 3 and 5. Setting this
+	to 0 will disable the dark scene bias, meaning modes will be equivalent to
+	their unbiased counterparts (2 and 4).
+	Default 1.0.
+
 .. option:: --sbrc --no-sbrc
 
 	To enable and disable segment based rate control.Segment duration depends on the
-	keyframe interval specified.If unspecified,default keyframe interval will be used.
+	keyframe interval specified. If unspecified, default keyframe interval will be used.
 	Default: disabled.
 
 .. option:: --hevc-aq
@@ -2015,19 +2023,19 @@ Quality, rate control and rate distortion options
 
 	* 1 (Forward masking):
 	--masking-strength <fwdMaxWindow,fwdRefQPDelta,fwdNonRefQPDelta>
-	or 
+	or
 	--masking-strength <fwdWindow1,fwdRefQPDelta1,fwdNonRefQPDelta1,fwdWindow2,fwdRefQPDelta2,fwdNonRefQPDelta2,
 						fwdWindow3,fwdRefQPDelta3,fwdNonRefQPDelta3,fwdWindow4,fwdRefQPDelta4,fwdNonRefQPDelta4,
 						fwdWindow5,fwdRefQPDelta5,fwdNonRefQPDelta5,fwdWindow6,fwdRefQPDelta6,fwdNonRefQPDelta6>
 	* 2 (Backward masking):
 	--masking-strength <bwdMaxWindow,bwdRefQPDelta,bwdNonRefQPDelta>
-	or 
+	or
 	--masking-strength <bwdWindow1,bwdRefQPDelta1,bwdNonRefQPDelta1,bwdWindow2,bwdRefQPDelta2,bwdNonRefQPDelta2,
 						bwdWindow3,bwdRefQPDelta3,bwdNonRefQPDelta3,bwdWindow4,bwdRefQPDelta4,bwdNonRefQPDelta4,
 						bwdWindow5,bwdRefQPDelta5,bwdNonRefQPDelta5,bwdWindow6,bwdRefQPDelta6,bwdNonRefQPDelta6>
 	* 3 (Bi-directional masking):
 	--masking-strength <fwdMaxWindow,fwdRefQPDelta,fwdNonRefQPDelta,bwdMaxWindow,bwdRefQPDelta,bwdNonRefQPDelta>
-	or 
+	or
 	--masking-strength <fwdWindow1,fwdRefQPDelta1,fwdNonRefQPDelta1,fwdWindow2,fwdRefQPDelta2,fwdNonRefQPDelta2,
 						fwdWindow3,fwdRefQPDelta3,fwdNonRefQPDelta3,fwdWindow4,fwdRefQPDelta4,fwdNonRefQPDelta4,
 						fwdWindow5,fwdRefQPDelta5,fwdNonRefQPDelta5,fwdWindow6,fwdRefQPDelta6,fwdNonRefQPDelta6,
@@ -2086,7 +2094,7 @@ Quality, rate control and rate distortion options
 	Sample config file:: (Format 2 Forward masking explained here)
 
 	--scenecut-aware-qp 1 --masking-strength 1000,8,12
-	
+
 	The above sample config file is available in `the downloads page <https://bitbucket.org/multicoreware/x265_git/downloads/scenecut_qp_config.txt>`_
 
 .. option:: --vbv-live-multi-pass, --no-vbv-live-multi-pass
@@ -2097,14 +2105,13 @@ Quality, rate control and rate distortion options
    rate control mode.
 
    Default disabled. **Experimental feature**
-   
 
 .. option:: bEncFocusedFramesOnly
 
 	Used to trigger encoding of selective GOPs; Disabled by default.
-	
+
 	**API ONLY**
-	
+
 
 Quantization Options
 ====================
@@ -2480,7 +2487,7 @@ VUI fields must be manually specified.
 	Specify combinations of color primaries, transfer characteristics, color matrix,
 	range of luma and chroma signals, and chroma sample location.
 	String format: <system-id>[:<color-volume>]
-	
+
 	This has higher precedence than individual VUI parameters. If any individual VUI option
 	is specified together with this, which changes the values set corresponding to the system-id
 	or color-volume, it will be discarded.
@@ -2659,7 +2666,7 @@ Bitstream options
 	| 3              | 3      |
 	+----------------+--------+
 	| 4              | 7      |
-    +----------------+--------+
+	+----------------+--------+
 	| 5              | 15     |
 	+----------------+--------+
 

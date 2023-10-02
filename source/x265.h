@@ -585,6 +585,7 @@ typedef enum
 #define X265_AQ_AUTO_VARIANCE        2
 #define X265_AQ_AUTO_VARIANCE_BIASED 3
 #define X265_AQ_EDGE                 4
+#define X265_AQ_EDGE_BIASED          5
 #define x265_ADAPT_RD_STRENGTH   4
 #define X265_REFINE_INTER_LEVELS 3
 /* NOTE! For this release only X265_CSP_I420 and X265_CSP_I444 are supported */
@@ -769,249 +770,153 @@ static const int8_t x265_gop_ra_length[X265_MAX_GOP_CONFIG] = { 4, 8, 16};
 static const x265_temporal_layer x265_gop_ra[X265_MAX_GOP_CONFIG][X265_MAX_GOP_LENGTH] = {
     {
         {
-            4,
-            0,
-            1,
+            4, 0, 1,
         },
         {
-            2,
-            1,
-            5,
+            2, 1, 5,
         },
         {
-            1,
-            2,
-            3,
+            1, 2, 3,
         },
         {
-            3,
-            2,
-            5,
+            3, 2, 5,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         }
     },
 
     {
         {
-            8,
-            0,
-            1,
+            8, 0, 1,
         },
         {
-            4,
-            1,
-            5,
+            4, 1, 5,
         },
         {
-            2,
-            2,
-            4,
+            2, 2, 4,
         },
         {
-            1,
-            3,
-            5,
+            1, 3, 5,
         },
         {
-            3,
-            3,
-            2,
+            3, 3, 2,
         },
         {
-            6,
-            2,
-            5,
+            6, 2, 5,
         },
         {
-            5,
-            3,
-            4,
+            5, 3, 4,
         },
         {
-            7,
-            3,
-            5,
+            7, 3, 5,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
         {
-            -1,
-            -1,
-            -1,
+            -1, -1, -1,
         },
     },
     {
         {
-            16,
-            0,
-            1,
+            16, 0, 1,
         },
         {
-            8,
-            1,
-            6,
+            8, 1, 6,
         },
         {
-            4,
-            2,
-            5,
+            4, 2, 5,
         },
         {
-            2,
-            3,
-            6,
+            2, 3, 6,
         },
         {
-            1,
-            4,
-            4,
+            1, 4, 4,
         },
         {
-            3,
-            4,
-            6,
+            3, 4, 6,
         },
         {
-            6,
-            3,
-            5,
+            6, 3, 5,
         },
         {
-            5,
-            4,
-            6,
+            5, 4, 6,
         },
         {
-            7,
-            4,
-            1,
+            7, 4, 1,
         },
         {
-            12,
-            2,
-            6,
+            12, 2, 6,
         },
         {
-            10,
-            3,
-            5,
+            10, 3, 5,
         },
         {
-            9,
-            4,
-            6,
+            9, 4, 6,
         },
         {
-            11,
-            4,
-            4,
+            11, 4, 4,
         },
         {
-            14,
-            3,
-            6,
+            14, 3, 6,
         },
         {
-            13,
-            4,
-            5,
+            13, 4, 5,
         },
         {
-            15,
-            4,
-            6,
+            15, 4, 6,
         }
     }
 };
@@ -1679,6 +1584,9 @@ typedef struct x265_param
         /* Sets the strength of AQ bias towards low detail CTUs. Valid only if
          * AQ is enabled. Default value: 1.0. Acceptable values between 0.0 and 3.0 */
         double    aqStrength;
+
+        /* Sets the bias towards dark scenes in AQ modes 3 and 5. */
+        double    aqBiasStrength;
 
         /* Delta QP range by QP adaptation based on a psycho-visual model.
          * Acceptable values between 1.0 to 6.0 */
