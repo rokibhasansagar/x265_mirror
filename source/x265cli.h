@@ -77,6 +77,7 @@ static const struct option long_options[] =
     { "cu-stats",             no_argument, NULL, 0 },
     { "y4m",                  no_argument, NULL, 0 },
     { "no-progress",          no_argument, NULL, 0 },
+    { "progress-readframes",  no_argument, NULL, 0 },
     { "output",         required_argument, NULL, 'o' },
     { "output-depth",   required_argument, NULL, 'D' },
     { "input",          required_argument, NULL, 0 },
@@ -91,6 +92,7 @@ static const struct option long_options[] =
     { "seek",           required_argument, NULL, 0 },
     { "frame-skip",     required_argument, NULL, 0 },
     { "frames",         required_argument, NULL, 'f' },
+    { "reader-options", required_argument, NULL, 0 },
     { "recon",          required_argument, NULL, 'r' },
     { "recon-depth",    required_argument, NULL, 0 },
     { "no-wpp",               no_argument, NULL, 0 },
@@ -182,6 +184,7 @@ static const struct option long_options[] =
     { "qp",             required_argument, NULL, 'q' },
     { "aq-mode",        required_argument, NULL, 0 },
     { "aq-strength",    required_argument, NULL, 0 },
+    { "aq-bias-strength", required_argument, NULL, 0 },
     { "rc-grain",             no_argument, NULL, 0 },
     { "no-rc-grain",          no_argument, NULL, 0 },
     { "ipratio",        required_argument, NULL, 0 },
@@ -401,6 +404,8 @@ static const struct option long_options[] =
         uint64_t totalbytes;
         int64_t startTime;
         int64_t prevUpdateTime;
+        const char* readerOpts;
+        bool bReadFrames;
 
         int argCnt;
         char** argString;
@@ -447,6 +452,8 @@ static const struct option long_options[] =
             saveLevel = 0;
             numRefs = 0;
             argCnt = 0;
+            readerOpts = NULL;
+            bReadFrames = false;
         }
 
         void destroy();

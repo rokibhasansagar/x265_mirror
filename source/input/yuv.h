@@ -68,6 +68,7 @@ public:
     bool isEof() const                            { return ifs && feof(ifs); }
     bool isFail()                                 { return !(ifs && !ferror(ifs) && threadActive); }
     void startReader();
+    void stopReader() {}
 
     bool readPicture(x265_picture&);
 
@@ -76,6 +77,8 @@ public:
     int getWidth() const                          { return width; }
 
     int getHeight() const                         { return height; }
+
+    int outputFrame()                             { return readCount.get(); }
 };
 }
 

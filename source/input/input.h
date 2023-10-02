@@ -53,7 +53,11 @@ struct InputFileInfo
 
     /* user supplied */
     int skipFrames;
+    int encodeToFrame;
     const char *filename;
+
+    /* reader specific options  */
+    const char *readerOpts;
 };
 
 class InputFile
@@ -70,6 +74,8 @@ public:
 
     virtual void startReader() = 0;
 
+    virtual void stopReader() = 0;
+
     virtual void release() = 0;
 
     virtual bool readPicture(x265_picture& pic) = 0;
@@ -83,6 +89,8 @@ public:
     virtual int getWidth() const = 0;
 
     virtual int getHeight() const = 0;
+
+    virtual int outputFrame() = 0;
 };
 }
 

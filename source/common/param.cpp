@@ -197,7 +197,7 @@ void x265_param_default(x265_param* param)
     param->subpelRefine = 2;
     param->searchRange = 57;
     param->maxNumMergeCand = 3;
-    param->limitReferences = 1;
+    param->limitReferences = 3;
     param->limitModes = 0;
     param->bEnableWeightedPred = 1;
     param->bEnableWeightedBiPred = 0;
@@ -272,6 +272,7 @@ void x265_param_default(x265_param* param)
     param->rc.hevcAq = 0;
     param->rc.qgSize = 32;
     param->rc.aqStrength = 1.0;
+    param->rc.aqBiasStrength = 1.0;
     param->rc.qpAdaptationRange = 1.0;
     param->rc.cuTree = 1;
     param->rc.rfConstantMax = 0;
@@ -441,7 +442,6 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         else if (!strcmp(preset, "veryfast"))
         {
             param->maxNumMergeCand = 2;
-            param->limitReferences = 3;
             param->bIntraInBFrames = 0;
             param->lookaheadDepth = 15;
             param->bFrameAdaptive = 0;
@@ -454,7 +454,6 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         else if (!strcmp(preset, "faster"))
         {
             param->maxNumMergeCand = 2;
-            param->limitReferences = 3;
             param->bIntraInBFrames = 0;
             param->lookaheadDepth = 15;
             param->bFrameAdaptive = 0;
@@ -465,7 +464,6 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         else if (!strcmp(preset, "fast"))
         {
             param->maxNumMergeCand = 2;
-            param->limitReferences = 3;
             param->bEnableEarlySkip = 0;
             param->bIntraInBFrames = 0;
             param->lookaheadDepth = 15;
@@ -480,7 +478,6 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         }
         else if (!strcmp(preset, "slow"))
         {
-            param->limitReferences = 3;
             param->bEnableEarlySkip = 0;
             param->bIntraInBFrames = 0;
             param->bEnableRectInter = 1;
@@ -512,6 +509,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->searchMethod = X265_STAR_SEARCH;
             param->maxNumReferences = 5;
             param->limitModes = 1;
+            param->limitReferences = 1;
             param->lookaheadSlices = 0; // disabled for best quality
             param->limitTU = 4;
         }
@@ -751,6 +749,7 @@ int x265_zone_param_parse(x265_param* p, const char* name, const char* value)
     }
     OPT("aq-mode") p->rc.aqMode = atoi(value);
     OPT("aq-strength") p->rc.aqStrength = atof(value);
+    OPT("aq-bias-strength") p->rc.aqBiasStrength = atof(value);
     OPT("nr-intra") p->noiseReductionIntra = atoi(value);
     OPT("nr-inter") p->noiseReductionInter = atoi(value);
     OPT("limit-modes") p->limitModes = atobool(value);
@@ -1359,9 +1358,9 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
                 {
                     if (window1 > 0)
                         p->fwdScenecutWindow = window1;
-                    if (refQpDelta1 > 0)
+                    if (refQpDelta1 >= 0)
                         p->fwdRefQpDelta = refQpDelta1;
-                    if (nonRefQpDelta1 > 0)
+                    if (nonRefQpDelta1 >= 0)
                         p->fwdNonRefQpDelta = nonRefQpDelta1;
                 }
                 else
@@ -1376,9 +1375,9 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
                 {
                     if (window1 > 0)
                         p->bwdScenecutWindow = window1;
-                    if (refQpDelta1 > 0)
+                    if (refQpDelta1 >= 0)
                         p->bwdRefQpDelta = refQpDelta1;
-                    if (nonRefQpDelta1 > 0)
+                    if (nonRefQpDelta1 >= 0)
                         p->bwdNonRefQpDelta = nonRefQpDelta1;
                 }
                 else
@@ -1395,15 +1394,15 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
                 {
                     if (window1 > 0)
                         p->fwdScenecutWindow = window1;
-                    if (refQpDelta1 > 0)
+                    if (refQpDelta1 >= 0)
                         p->fwdRefQpDelta = refQpDelta1;
-                    if (nonRefQpDelta1 > 0)
+                    if (nonRefQpDelta1 >= 0)
                         p->fwdNonRefQpDelta = nonRefQpDelta1;
                     if (window2 > 0)
                         p->bwdScenecutWindow = window2;
-                    if (refQpDelta2 > 0)
+                    if (refQpDelta2 >= 0)
                         p->bwdRefQpDelta = refQpDelta2;
-                    if (nonRefQpDelta2 > 0)
+                    if (nonRefQpDelta2 >= 0)
                         p->bwdNonRefQpDelta = nonRefQpDelta2;
                 }
                 else
@@ -1446,6 +1445,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("vbv-live-multi-pass") p->bliveVBV2pass = atobool(value);
         OPT("min-vbv-fullness") p->minVbvFullness = atof(value);
         OPT("max-vbv-fullness") p->maxVbvFullness = atof(value);
+        OPT("aq-bias-strength") p->rc.aqBiasStrength = atof(value);
         else
             return X265_PARAM_BAD_NAME;
     }
@@ -1693,7 +1693,7 @@ int x265_check_params(x265_param* param)
           "Lookahead depth must be less than 256");
     CHECK(param->lookaheadSlices > 16 || param->lookaheadSlices < 0,
           "Lookahead slices must between 0 and 16");
-    CHECK(param->rc.aqMode < X265_AQ_NONE || X265_AQ_EDGE < param->rc.aqMode,
+    CHECK(param->rc.aqMode < X265_AQ_NONE || X265_AQ_EDGE_BIASED < param->rc.aqMode,
           "Aq-Mode is out of range");
     CHECK(param->rc.aqStrength < 0 || param->rc.aqStrength > 3,
           "Aq-Strength is out of range");
@@ -1845,10 +1845,10 @@ int x265_check_params(x265_param* param)
         "Invalid SAO tune level. Value must be between 0 and 4 (inclusive)");
     if (param->bEnableSceneCutAwareQp)
     {
-        if (!param->rc.bStatRead)
+        if (param->bEnableSceneCutAwareQp != FORWARD && !param->rc.bStatRead)
         {
             param->bEnableSceneCutAwareQp = 0;
-            x265_log(param, X265_LOG_WARNING, "Disabling Scenecut Aware Frame Quantizer Selection since it works only in pass 2\n");
+            x265_log(param, X265_LOG_WARNING, "Disabling Scenecut Aware Frame Quantizer Selection since single pass only works with Forward masking\n");
         }
         else
         {
@@ -2175,8 +2175,8 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bEnableHME, "hme");
     if (p->bEnableHME)
     {
-        s += sprintf(s, " Level 0,1,2=%d,%d,%d", p->hmeSearchMethod[0], p->hmeSearchMethod[1], p->hmeSearchMethod[2]);
-        s += sprintf(s, " merange L0,L1,L2=%d,%d,%d", p->hmeRange[0], p->hmeRange[1], p->hmeRange[2]);
+        s += sprintf(s, " hme-level-0,1,2=%d,%d,%d", p->hmeSearchMethod[0], p->hmeSearchMethod[1], p->hmeSearchMethod[2]);
+        s += sprintf(s, " hmerange-level-0,1,2=%d,%d,%d", p->hmeRange[0], p->hmeRange[1], p->hmeRange[2]);
     }
     BOOL(p->bEnableWeightedPred, "weightp");
     BOOL(p->bEnableWeightedBiPred, "weightb");
@@ -2242,6 +2242,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     }
     s += sprintf(s, " aq-mode=%d", p->rc.aqMode);
     s += sprintf(s, " aq-strength=%.2f", p->rc.aqStrength);
+    s += sprintf(s, " aq-bias-strength=%.2f", p->rc.aqBiasStrength);
     BOOL(p->rc.cuTree, "cutree");
     s += sprintf(s, " zone-count=%d", p->rc.zoneCount);
     if (p->rc.zoneCount)
@@ -2328,8 +2329,8 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += sprintf(s, " qp-adaptation-range=%.2f", p->rc.qpAdaptationRange);
     s += sprintf(s, " scenecut-aware-qp=%d", p->bEnableSceneCutAwareQp);
     if (p->bEnableSceneCutAwareQp)
-        s += sprintf(s, " fwd-scenecut-window=%d fwd-ref-qp-delta=%f fwd-nonref-qp-delta=%f bwd-scenecut-window=%d bwd-ref-qp-delta=%f bwd-nonref-qp-delta=%f", p->fwdScenecutWindow, p->fwdRefQpDelta, p->fwdNonRefQpDelta, p->bwdScenecutWindow, p->bwdRefQpDelta, p->bwdNonRefQpDelta);
-    s += sprintf(s, "conformance-window-offsets right=%d bottom=%d", p->confWinRightOffset, p->confWinBottomOffset);
+        s += sprintf(s, " fwd-scenecut-window=%d fwd-ref-qp-delta=%.2f fwd-nonref-qp-delta=%.2f bwd-scenecut-window=%d bwd-ref-qp-delta=%.2f bwd-nonref-qp-delta=%.2f", p->fwdScenecutWindow, p->fwdRefQpDelta, p->fwdNonRefQpDelta, p->bwdScenecutWindow, p->bwdRefQpDelta, p->bwdNonRefQpDelta);
+    s += sprintf(s, " conformance-window-offsets right=%d bottom=%d", p->confWinRightOffset, p->confWinBottomOffset);
     s += sprintf(s, " decoder-max-rate=%d", p->decoderVbvMaxRate);
     BOOL(p->bliveVBV2pass, "vbv-live-multi-pass");
 #undef BOOL
@@ -2530,6 +2531,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->rc.qpStep = src->rc.qpStep;
     dst->rc.aqMode = src->rc.aqMode;
     dst->rc.aqStrength = src->rc.aqStrength;
+    dst->rc.aqBiasStrength = src->rc.aqBiasStrength;
     dst->rc.vbvBufferSize = src->rc.vbvBufferSize;
     dst->rc.vbvMaxBitrate = src->rc.vbvMaxBitrate;
 
